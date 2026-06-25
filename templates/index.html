@@ -1,282 +1,75 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="page-header">
     <div>
-        <h1 class="h3 mb-1">Quadras e casas cadastradas</h1>
-        <p class="text-muted mb-0">Organize as casas por quadra e acompanhe os pacientes por residência.</p>
+        <h1 class="page-header-title">Quadras e casas</h1>
+        <p class="page-header-subtitle">Clique em uma casa para ver os pacientes cadastrados.</p>
     </div>
-    <div class="d-flex gap-2">
-        <a class="btn btn-outline-primary" href="{{ url_for('cadastrar_quadra') }}">Cadastrar quadra</a>
-        <a class="btn btn-primary" href="{{ url_for('cadastrar_casa') }}">Cadastrar casa</a>
+    <div class="page-header-actions">
+        <a class="btn btn-outline-secondary" href="{{ url_for('cadastrar_quadra') }}">
+            <i class="bi bi-plus"></i>
+            Nova quadra
+        </a>
+        <a class="btn btn-primary" href="{{ url_for('cadastrar_casa') }}">
+            <i class="bi bi-plus"></i>
+            Nova casa
+        </a>
     </div>
 </div>
 
-<section class="stats-hero">
-    <div class="stat-hero">
-        <span>Pacientes cadastrados</span>
-        <strong>{{ stats.total_pacientes }}</strong>
-    </div>
-    <div class="stat-hero stat-hero-secondary">
-        <span>Casas cadastradas</span>
-        <strong>{{ stats.total_casas }}</strong>
-    </div>
-</section>
+<!-- Busca sempre visível -->
+<form class="search-bar" method="get" action="{{ url_for('index') }}" role="search">
+    <i class="bi bi-search search-bar-icon" aria-hidden="true"></i>
+    <input
+        class="form-control"
+        type="search"
+        name="busca"
+        value="{{ busca }}"
+        placeholder="Buscar paciente por nome, CPF ou CNS…"
+        aria-label="Buscar paciente"
+        autocomplete="off"
+    >
+    {% if busca %}
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('index') }}" title="Limpar busca" aria-label="Limpar busca">
+            <i class="bi bi-x"></i>
+        </a>
+    {% endif %}
+    <div class="search-bar-divider" aria-hidden="true"></div>
+    <button class="btn btn-sm btn-primary" type="submit">Buscar</button>
+</form>
 
-<section class="stats-strip mb-4">
-    <div class="stat-mini">
-        <span>Casas vazias</span>
-        <strong>{{ stats.casas_vazias }}</strong>
-    </div>
-    <div class="stat-mini">
-        <span>Crianças</span>
-        <strong>{{ stats.criancas }}</strong>
-    </div>
-    <div class="stat-mini">
-        <span>Idosos 60+</span>
-        <strong>{{ stats.idosos }}</strong>
-    </div>
-    <div class="stat-mini">
-        <span>Gestantes</span>
-        <strong>{{ stats.gestantes }}</strong>
-    </div>
-    <div class="stat-mini">
-        <span>Homens</span>
-        <strong>{{ stats.homens }}</strong>
-    </div>
-    <div class="stat-mini">
-        <span>Mulheres</span>
-        <strong>{{ stats.mulheres }}</strong>
-    </div>
-</section>
-
-<section class="mb-4 dashboard-section">
-    <div class="dashboard-section-header align-items-start">
-        <div>
-            <h2 class="h5 mb-1">Buscar paciente</h2>
-            <p class="text-muted mb-0">Pesquise por nome, CPF ou CNS. A busca ignora acentos, maiúsculas e minúsculas.</p>
+{% if busca %}
+    <div class="search-results">
+        <div class="search-results-header">
+            Resultado para "<strong>{{ busca }}</strong>"{% if pacientes_busca %} — {{ pacientes_busca|length }} encontrado(s){% endif %}
         </div>
-        <button
-            class="btn btn-outline-primary btn-sm collapse-toggle"
-            type="button"
-            data-bs-toggle="collapse"
-            data-bs-target="#buscaPanel"
-            aria-expanded="{{ 'true' if busca else 'false' }}"
-            aria-controls="buscaPanel"
-            data-open-label="Ocultar busca"
-            data-closed-label="Mostrar busca"
-        >
-            <span>{{ 'Ocultar busca' if busca else 'Mostrar busca' }}</span>
-            <i class="bi bi-chevron-down"></i>
-        </button>
-    </div>
-
-    <div class="collapse mt-3 {% if busca %}show{% endif %}" id="buscaPanel">
-        <form class="search-form" method="get" action="{{ url_for('index') }}">
-            <div class="input-group">
-                <span class="input-group-text"><i class="bi bi-search"></i></span>
-                <input
-                    class="form-control"
-                    type="search"
-                    name="busca"
-                    value="{{ busca }}"
-                    placeholder="Digite nome, CPF ou CNS"
-                    aria-label="Buscar paciente"
-                >
-                <button class="btn btn-primary" type="submit">Buscar</button>
-                {% if busca %}
-                    <a class="btn btn-outline-secondary" href="{{ url_for('index') }}">Limpar</a>
-                {% endif %}
-            </div>
-        </form>
-
-        {% if busca %}
-            <div class="mt-3">
-                <h3 class="h6 mb-3">Resultado da busca por "{{ busca }}"</h3>
-
-                {% if pacientes_busca %}
-                    <div class="table-responsive">
-                        <table class="table table-striped align-middle">
-                            <thead>
-                                <tr>
-                                    <th>Nome</th>
-                                    <th>CPF/CNS</th>
-                                    <th>Nascimento</th>
-                                    <th>Quadra</th>
-                                    <th>Casa</th>
-                                    <th>Endereço</th>
-                                    <th class="text-end">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for paciente in pacientes_busca %}
-                                    <tr>
-                                        <td class="fw-semibold">{{ paciente.nome }}</td>
-                                        <td>{{ paciente.cpf|cpf_cns }}</td>
-                                        <td>{{ paciente.data_nascimento|data_br }}</td>
-                                        <td>{{ paciente.numero_quadra or 'Sem quadra' }}</td>
-                                        <td>{{ paciente.numero_casa }}</td>
-                                        <td>{{ paciente.endereco }}</td>
-                                        <td class="text-end">
-                                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('detalhes_casa', casa_id=paciente.casa_id) }}">Abrir casa</a>
-                                            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('editar_paciente', paciente_id=paciente.id) }}">Editar</a>
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <div class="empty-state">
-                        <h3 class="h6">Nenhum paciente encontrado</h3>
-                        <p class="text-muted mb-0">Tente buscar por parte do nome ou apenas pelos números do CPF/CNS.</p>
-                    </div>
-                {% endif %}
-            </div>
-        {% endif %}
-    </div>
-</section>
-
-<section class="mb-4 dashboard-section">
-    <div class="dashboard-section-header">
-        <div>
-            <h2 class="h5 mb-1">Contagem por comorbidade</h2>
-            <p class="text-muted mb-0">Resumo das condições marcadas nos cadastros de pacientes.</p>
-        </div>
-        <button
-            class="btn btn-outline-primary btn-sm collapse-toggle"
-            type="button"
-            data-bs-toggle="collapse"
-            data-bs-target="#comorbidadesPanel"
-            aria-expanded="false"
-            aria-controls="comorbidadesPanel"
-            data-open-label="Ocultar contagem"
-            data-closed-label="Mostrar contagem"
-        >
-            <span>Mostrar contagem</span>
-            <i class="bi bi-chevron-down"></i>
-        </button>
-    </div>
-
-    <div class="collapse mt-3" id="comorbidadesPanel">
-        <div class="comorbidity-grid">
-            {% for condicao, total in stats.comorbidades %}
-                <div class="comorbidity-item">
-                    <span>{{ condicao }}</span>
-                    <strong>{{ total }}</strong>
-                </div>
-            {% endfor %}
-        </div>
-    </div>
-</section>
-
-<section class="mb-4 dashboard-section">
-    <div class="dashboard-section-header">
-        <div>
-            <h2 class="h5 mb-1">Quadras</h2>
-            <p class="text-muted mb-0">{{ quadras|length }} quadra(s) cadastrada(s)</p>
-        </div>
-        <button
-            class="btn btn-outline-primary btn-sm collapse-toggle"
-            type="button"
-            data-bs-toggle="collapse"
-            data-bs-target="#quadrasPanel"
-            aria-expanded="false"
-            aria-controls="quadrasPanel"
-            data-open-label="Ocultar quadras"
-            data-closed-label="Mostrar quadras"
-        >
-            <span>Mostrar quadras</span>
-            <i class="bi bi-chevron-down"></i>
-        </button>
-    </div>
-
-    <div class="collapse mt-3" id="quadrasPanel">
-        {% if quadras %}
+        {% if pacientes_busca %}
             <div class="table-responsive">
-                <table class="table table-striped align-middle">
+                <table class="table align-middle mb-0">
                     <thead>
                         <tr>
-                            <th>Quadra Nº</th>
-                            <th>Casas vinculadas</th>
-                            <th class="text-end">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for quadra in quadras %}
-                            <tr>
-                                <td class="fw-semibold">{{ quadra.numero_quadra }}</td>
-                                <td>{{ quadra.total_casas }}</td>
-                                <td class="text-end">
-                                    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('editar_quadra', quadra_id=quadra.id) }}">Editar</a>
-                                    <form class="d-inline confirm-delete-form" method="post" action="{{ url_for('excluir_quadra', quadra_id=quadra.id) }}" data-confirm-message="Excluir esta quadra? As casas vinculadas ficarão sem quadra.">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                        <button class="btn btn-sm btn-outline-danger" type="submit">Excluir</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        {% else %}
-            <div class="empty-state mb-4">
-                <h3 class="h5">Nenhuma quadra cadastrada</h3>
-                <p class="text-muted">Cadastre uma quadra para organizar as casas.</p>
-                <a class="btn btn-primary" href="{{ url_for('cadastrar_quadra') }}">Cadastrar primeira quadra</a>
-            </div>
-        {% endif %}
-    </div>
-</section>
-
-<section class="mb-4 dashboard-section">
-    <div class="dashboard-section-header">
-        <div>
-            <h2 class="h5 mb-1">Casas</h2>
-            <p class="text-muted mb-0">{{ casas|length }} casa(s) cadastrada(s)</p>
-        </div>
-        <button
-            class="btn btn-outline-primary btn-sm collapse-toggle"
-            type="button"
-            data-bs-toggle="collapse"
-            data-bs-target="#casasPanel"
-            aria-expanded="false"
-            aria-controls="casasPanel"
-            data-open-label="Ocultar casas"
-            data-closed-label="Mostrar casas"
-        >
-            <span>Mostrar casas</span>
-            <i class="bi bi-chevron-down"></i>
-        </button>
-    </div>
-
-    <div class="collapse mt-3" id="casasPanel">
-        {% if casas %}
-            <div class="table-responsive">
-                <table class="table table-striped align-middle">
-                    <thead>
-                        <tr>
-                            <th>Quadra Nº</th>
-                            <th>Casa Nº</th>
+                            <th>Nome</th>
+                            <th>CPF/CNS</th>
+                            <th>Nascimento</th>
+                            <th>Quadra</th>
+                            <th>Casa</th>
                             <th>Endereço</th>
-                            <th>Pacientes</th>
                             <th class="text-end">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for casa in casas %}
+                        {% for paciente in pacientes_busca %}
                             <tr>
-                                <td>{{ casa.numero_quadra or 'Sem quadra' }}</td>
-                                <td class="fw-semibold">{{ casa.numero_casa }}</td>
-                                <td>{{ casa.endereco }}</td>
-                                <td>{{ casa.total_pacientes }}</td>
+                                <td class="fw-semibold">{{ paciente.nome }}</td>
+                                <td>{{ paciente.cpf|cpf_cns }}</td>
+                                <td>{{ paciente.data_nascimento|data_br }}</td>
+                                <td>{{ paciente.numero_quadra or '—' }}</td>
+                                <td>{{ paciente.numero_casa }}</td>
+                                <td>{{ paciente.endereco }}</td>
                                 <td class="text-end">
-                                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('detalhes_casa', casa_id=casa.id) }}">Abrir</a>
-                                    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('editar_casa', casa_id=casa.id) }}">Editar</a>
-                                    <form class="d-inline confirm-delete-form" method="post" action="{{ url_for('excluir_casa', casa_id=casa.id) }}" data-confirm-message="Excluir esta casa e todos os pacientes vinculados?">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                        <button class="btn btn-sm btn-outline-danger" type="submit">Excluir</button>
-                                    </form>
+                                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('detalhes_casa', casa_id=paciente.casa_id) }}">Abrir casa</a>
+                                    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('editar_paciente', paciente_id=paciente.id) }}">Editar</a>
                                 </td>
                             </tr>
                         {% endfor %}
@@ -284,12 +77,199 @@
                 </table>
             </div>
         {% else %}
-            <div class="empty-state">
-                <h2 class="h5">Nenhuma casa cadastrada</h2>
-                <p class="text-muted">Comece cadastrando a primeira residência.</p>
-                <a class="btn btn-primary" href="{{ url_for('cadastrar_casa') }}">Cadastrar primeira casa</a>
+            <div class="p-4 text-center" style="color: var(--app-muted); font-size: 0.875rem;">
+                Nenhum paciente encontrado. Tente buscar por parte do nome ou apenas os números.
             </div>
         {% endif %}
     </div>
+{% endif %}
+
+<!-- Stats -->
+<section class="stats-section">
+    <div class="stats-hero">
+        <div class="stat-hero">
+            <span>Pacientes</span>
+            <strong>{{ stats.total_pacientes }}</strong>
+        </div>
+        <div class="stat-hero stat-hero-secondary">
+            <span>Casas</span>
+            <strong>{{ stats.total_casas }}</strong>
+        </div>
+    </div>
+    <div class="stats-strip">
+        <div class="stat-mini">
+            <span>Vazias</span>
+            <strong>{{ stats.casas_vazias }}</strong>
+        </div>
+        <div class="stat-mini">
+            <span>Crianças</span>
+            <strong>{{ stats.criancas }}</strong>
+        </div>
+        <div class="stat-mini">
+            <span>Idosos 60+</span>
+            <strong>{{ stats.idosos }}</strong>
+        </div>
+        <div class="stat-mini">
+            <span>Gestantes</span>
+            <strong>{{ stats.gestantes }}</strong>
+        </div>
+        <div class="stat-mini">
+            <span>Homens</span>
+            <strong>{{ stats.homens }}</strong>
+        </div>
+        <div class="stat-mini">
+            <span>Mulheres</span>
+            <strong>{{ stats.mulheres }}</strong>
+        </div>
+    </div>
 </section>
+
+<!-- Casas — grid de cards -->
+<div class="section-header">
+    <div>
+        <h2>Casas</h2>
+        <p>{{ casas|length }} casa(s) cadastrada(s)</p>
+    </div>
+</div>
+
+{% if casas %}
+    <div class="casas-grid mb-5">
+        {% for casa in casas %}
+            <div class="casa-card">
+                <div class="casa-card-header">
+                    <div class="casa-card-number">Casa {{ casa.numero_casa }}</div>
+                    <span class="casa-card-badge {% if casa.total_pacientes == 0 %}empty{% endif %}">
+                        {{ casa.total_pacientes }} pac.
+                    </span>
+                </div>
+                <div class="casa-card-quadra">{{ 'Quadra ' ~ casa.numero_quadra if casa.numero_quadra else 'Sem quadra' }}</div>
+                <div class="casa-card-address">{{ casa.endereco }}</div>
+                <div class="casa-card-footer">
+                    <a class="btn btn-sm btn-primary" href="{{ url_for('detalhes_casa', casa_id=casa.id) }}">Abrir</a>
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('editar_casa', casa_id=casa.id) }}">Editar</a>
+                    <form class="d-inline confirm-delete-form ms-auto" method="post"
+                          action="{{ url_for('excluir_casa', casa_id=casa.id) }}"
+                          data-confirm-message="Excluir esta casa e todos os pacientes vinculados?">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="btn btn-sm btn-outline-danger" type="submit" title="Excluir casa">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="empty-state mb-5">
+        <div class="empty-state-icon">
+            <i class="bi bi-house"></i>
+        </div>
+        <h3>Nenhuma casa cadastrada</h3>
+        <p>Comece cadastrando a primeira residência para organizar os pacientes.</p>
+        <a class="btn btn-primary" href="{{ url_for('cadastrar_casa') }}">
+            <i class="bi bi-plus"></i>
+            Cadastrar primeira casa
+        </a>
+    </div>
+{% endif %}
+
+<!-- Quadras (collapsível) -->
+<div class="section-header">
+    <div>
+        <h2>Quadras</h2>
+        <p>{{ quadras|length }} quadra(s) cadastrada(s)</p>
+    </div>
+    <button
+        class="btn btn-outline-secondary btn-sm collapse-toggle"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#quadrasPanel"
+        aria-expanded="false"
+        aria-controls="quadrasPanel"
+        data-open-label="Ocultar"
+        data-closed-label="Mostrar"
+    >
+        <span>Mostrar</span>
+        <i class="bi bi-chevron-down"></i>
+    </button>
+</div>
+
+<div class="collapse mb-5" id="quadrasPanel">
+    {% if quadras %}
+        <div class="table-container">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Nº</th>
+                        <th>Casas vinculadas</th>
+                        <th class="text-end">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for quadra in quadras %}
+                        <tr>
+                            <td class="fw-semibold">{{ quadra.numero_quadra }}</td>
+                            <td>{{ quadra.total_casas }}</td>
+                            <td class="text-end">
+                                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('editar_quadra', quadra_id=quadra.id) }}">Editar</a>
+                                <form class="d-inline confirm-delete-form" method="post"
+                                      action="{{ url_for('excluir_quadra', quadra_id=quadra.id) }}"
+                                      data-confirm-message="Excluir esta quadra? As casas vinculadas ficarão sem quadra.">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit" title="Excluir quadra">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon">
+                <i class="bi bi-grid"></i>
+            </div>
+            <h3>Nenhuma quadra cadastrada</h3>
+            <p>Cadastre uma quadra para organizar as casas por setor.</p>
+            <a class="btn btn-primary" href="{{ url_for('cadastrar_quadra') }}">
+                <i class="bi bi-plus"></i>
+                Cadastrar primeira quadra
+            </a>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Comorbidades (collapsível) -->
+<div class="section-header">
+    <div>
+        <h2>Contagem por comorbidade</h2>
+        <p>Resumo das condições marcadas nos cadastros de pacientes.</p>
+    </div>
+    <button
+        class="btn btn-outline-secondary btn-sm collapse-toggle"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#comorbidadesPanel"
+        aria-expanded="false"
+        aria-controls="comorbidadesPanel"
+        data-open-label="Ocultar"
+        data-closed-label="Mostrar"
+    >
+        <span>Mostrar</span>
+        <i class="bi bi-chevron-down"></i>
+    </button>
+</div>
+
+<div class="collapse mb-5" id="comorbidadesPanel">
+    <div class="comorbidity-grid">
+        {% for condicao, total in stats.comorbidades %}
+            <div class="comorbidity-item">
+                <span>{{ condicao }}</span>
+                <strong>{{ total }}</strong>
+            </div>
+        {% endfor %}
+    </div>
+</div>
 {% endblock %}

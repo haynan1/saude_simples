@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1 class="h3 mb-3">Trocar senha</h1>
+<div class="page-header">
+    <div>
+        <a class="page-back" href="{{ url_for('index') }}">
+            <i class="bi bi-arrow-left"></i>
+            Início
+        </a>
+        <h1 class="page-header-title">Alterar senha</h1>
+    </div>
+</div>
 
 <form class="form-panel" method="post" style="max-width: 480px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -14,7 +22,7 @@
         <input class="form-control" id="nova_senha" name="nova_senha" type="password" autocomplete="new-password" minlength="10" required>
         <div class="form-text">Mínimo de 10 caracteres.</div>
     </div>
-    <div class="mb-3">
+    <div class="mb-4">
         <label class="form-label" for="confirmar_senha">Confirmar nova senha</label>
         <input class="form-control" id="confirmar_senha" name="confirmar_senha" type="password" autocomplete="new-password" minlength="10" required>
     </div>

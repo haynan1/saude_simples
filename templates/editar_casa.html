@@ -1,9 +1,17 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1 class="h3 mb-3">Editar casa</h1>
+<div class="page-header">
+    <div>
+        <a class="page-back" href="{{ url_for('detalhes_casa', casa_id=casa.id) }}">
+            <i class="bi bi-arrow-left"></i>
+            Casa {{ casa.numero_casa }}
+        </a>
+        <h1 class="page-header-title">Editar casa</h1>
+    </div>
+</div>
 
-<form class="form-panel" method="post">
+<form class="form-panel" method="post" style="max-width: 560px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="mb-3">
         <label class="form-label" for="quadra_id">Quadra</label>
@@ -20,7 +28,7 @@
         <input class="form-control" id="numero_casa" name="numero_casa" type="number" min="1" value="{{ casa.numero_casa }}" required>
     </div>
 
-    <div class="mb-3">
+    <div class="mb-4">
         <label class="form-label" for="endereco">Endereço</label>
         <input class="form-control" id="endereco" name="endereco" type="text" value="{{ casa.endereco }}" required>
     </div>

@@ -287,15 +287,15 @@ function copyText(text) {
 
 document.querySelectorAll(".copy-patient").forEach((button) => {
     button.addEventListener("click", () => {
-        const originalText = button.textContent;
+        const icon = button.querySelector(".copy-icon");
 
         copyText(button.dataset.copy).then(() => {
-            button.textContent = "Copiado";
+            if (icon) icon.className = "bi bi-clipboard-check copy-icon";
             button.classList.remove("btn-outline-primary");
             button.classList.add("btn-success");
 
             window.setTimeout(() => {
-                button.textContent = originalText;
+                if (icon) icon.className = "bi bi-clipboard copy-icon";
                 button.classList.remove("btn-success");
                 button.classList.add("btn-outline-primary");
             }, 1500);

@@ -1,102 +1,137 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+<div class="page-header">
     <div>
-        <h1 class="h3 mb-1">Casa Nº {{ casa.numero_casa }}</h1>
-        <p class="text-muted mb-1">Quadra: {{ casa.numero_quadra or 'Sem quadra' }}</p>
-        <p class="text-muted mb-0">{{ casa.endereco }}</p>
+        <a class="page-back" href="{{ url_for('index') }}">
+            <i class="bi bi-arrow-left"></i>
+            Casas
+        </a>
+        <h1 class="page-header-title">Casa {{ casa.numero_casa }}</h1>
+        <div class="d-flex flex-wrap gap-3 mt-1">
+            {% if casa.numero_quadra %}
+                <span class="page-header-subtitle">Quadra {{ casa.numero_quadra }}</span>
+            {% endif %}
+            <span class="page-header-subtitle">{{ casa.endereco }}</span>
+        </div>
     </div>
-    <div class="d-flex gap-2">
-        <a class="btn btn-primary" href="{{ url_for('cadastrar_paciente', casa_id=casa.id) }}">Cadastrar paciente</a>
+    <div class="page-header-actions">
+        <a class="btn btn-primary" href="{{ url_for('cadastrar_paciente', casa_id=casa.id) }}">
+            <i class="bi bi-plus"></i>
+            Cadastrar paciente
+        </a>
         <a class="btn btn-outline-secondary" href="{{ url_for('editar_casa', casa_id=casa.id) }}">Editar casa</a>
     </div>
 </div>
 
-<h2 class="h5 mb-3">Pacientes desta casa</h2>
-
 {% if pacientes %}
-    <div class="table-responsive">
-        <table class="table table-striped align-middle patients-table">
-            <thead>
-                <tr>
-                    <th>Nome</th>
-                    <th>CPF/CNS</th>
-                    <th>Nascimento</th>
-                    <th>Telefone</th>
-                    <th>Nome do pai</th>
-                    <th>Nome da mãe</th>
-                    <th class="text-end">Ações</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for paciente in pacientes %}
+    <div class="table-container">
+        <div class="table-responsive">
+            <table class="table align-middle patients-table mb-0">
+                <thead>
                     <tr>
-                        <td class="fw-semibold patient-name">{{ paciente.nome }}</td>
-                        <td class="text-nowrap">{{ paciente.cpf|cpf_cns }}</td>
-                        <td class="text-nowrap">{{ paciente.data_nascimento|data_br }}</td>
-                        <td class="text-nowrap">{{ paciente.telefone|telefone }}</td>
-                        <td class="patient-relative">{{ paciente.nome_pai }}</td>
-                        <td class="patient-relative">{{ paciente.nome_mae }}</td>
-                        <td class="text-end patient-actions">
-                            <div class="btn-group btn-group-sm" role="group" aria-label="Ações do paciente">
-                                {% if paciente.telefone %}
-                                    <a
-                                        class="btn btn-outline-success"
-                                        href="{{ paciente.telefone|whatsapp }}"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        title="Abrir WhatsApp"
-                                        aria-label="Abrir WhatsApp de {{ paciente.nome }}"
-                                    >
-                                        <i class="bi bi-whatsapp"></i>
-                                    </a>
-                                {% endif %}
-                                <button
-                                    class="btn btn-outline-primary copy-patient"
-                                    type="button"
-                                    data-copy="{{ ('Nome: ' ~ paciente.nome ~ ' | CPF/CNS: ' ~ (paciente.cpf|cpf_cns) ~ ' | Nascimento: ' ~ (paciente.data_nascimento|data_br) ~ ' | Telefone: ' ~ (paciente.telefone|telefone))|e }}"
-                                >
-                                    Copiar
-                                </button>
-                                <a class="btn btn-outline-secondary" href="{{ url_for('editar_paciente', paciente_id=paciente.id) }}">Editar</a>
-                                <form class="d-inline confirm-delete-form" method="post" action="{{ url_for('excluir_paciente', paciente_id=paciente.id) }}" data-confirm-message="Excluir este paciente?">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button class="btn btn-outline-danger" type="submit">Excluir</button>
-                                </form>
-                            </div>
-                        </td>
+                        <th>Nome</th>
+                        <th>CPF/CNS</th>
+                        <th>Nascimento</th>
+                        <th>Telefone</th>
+                        <th>Nome do pai</th>
+                        <th>Nome da mãe</th>
+                        <th class="text-end">Ações</th>
                     </tr>
-                    {% if paciente.observacao %}
-                        <tr class="patient-observation-row">
-                            <td colspan="7">
-                                <span class="fw-semibold">Observação:</span>
-                                <span>{{ paciente.observacao }}</span>
+                </thead>
+                <tbody>
+                    {% for paciente in pacientes %}
+                        <tr>
+                            <td class="fw-semibold patient-name">{{ paciente.nome }}</td>
+                            <td class="text-nowrap">{{ paciente.cpf|cpf_cns }}</td>
+                            <td class="text-nowrap">{{ paciente.data_nascimento|data_br }}</td>
+                            <td class="text-nowrap">{{ paciente.telefone|telefone }}</td>
+                            <td class="patient-relative">{{ paciente.nome_pai }}</td>
+                            <td class="patient-relative">{{ paciente.nome_mae }}</td>
+                            <td class="text-end patient-actions">
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Ações do paciente {{ paciente.nome }}">
+                                    {% if paciente.telefone %}
+                                        <a
+                                            class="btn btn-outline-success"
+                                            href="{{ paciente.telefone|whatsapp }}"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title="WhatsApp de {{ paciente.nome }}"
+                                            aria-label="WhatsApp de {{ paciente.nome }}"
+                                        >
+                                            <i class="bi bi-whatsapp"></i>
+                                        </a>
+                                    {% endif %}
+                                    <button
+                                        class="btn btn-outline-primary copy-patient"
+                                        type="button"
+                                        title="Copiar dados de {{ paciente.nome }}"
+                                        aria-label="Copiar dados de {{ paciente.nome }}"
+                                        data-copy="{{ ('Nome: ' ~ paciente.nome ~ ' | CPF/CNS: ' ~ (paciente.cpf|cpf_cns) ~ ' | Nascimento: ' ~ (paciente.data_nascimento|data_br) ~ ' | Telefone: ' ~ (paciente.telefone|telefone))|e }}"
+                                    >
+                                        <i class="bi bi-clipboard copy-icon"></i>
+                                    </button>
+                                    <a
+                                        class="btn btn-outline-secondary"
+                                        href="{{ url_for('editar_paciente', paciente_id=paciente.id) }}"
+                                        title="Editar {{ paciente.nome }}"
+                                        aria-label="Editar {{ paciente.nome }}"
+                                    >
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <form
+                                        class="d-inline confirm-delete-form"
+                                        method="post"
+                                        action="{{ url_for('excluir_paciente', paciente_id=paciente.id) }}"
+                                        data-confirm-message="Excluir este paciente?"
+                                    >
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button
+                                            class="btn btn-outline-danger"
+                                            type="submit"
+                                            title="Excluir {{ paciente.nome }}"
+                                            aria-label="Excluir {{ paciente.nome }}"
+                                        >
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
-                    {% endif %}
-                    {% set condicoes = paciente.condicoes_saude|condicoes_lista %}
-                    {% if condicoes %}
-                        <tr class="patient-observation-row">
-                            <td colspan="7">
-                                <span class="fw-semibold">Condições de saúde:</span>
-                                {% for condicao in condicoes %}
-                                    <span class="badge text-bg-secondary health-badge">{{ condicao }}</span>
-                                {% endfor %}
-                            </td>
-                        </tr>
-                    {% endif %}
-                {% endfor %}
-            </tbody>
-        </table>
+                        {% if paciente.observacao %}
+                            <tr class="patient-observation-row">
+                                <td colspan="7">
+                                    <span class="fw-semibold">Obs:</span>
+                                    <span>{{ paciente.observacao }}</span>
+                                </td>
+                            </tr>
+                        {% endif %}
+                        {% set condicoes = paciente.condicoes_saude|condicoes_lista %}
+                        {% if condicoes %}
+                            <tr class="patient-observation-row">
+                                <td colspan="7">
+                                    {% for condicao in condicoes %}
+                                        <span class="badge text-bg-secondary health-badge">{{ condicao }}</span>
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 {% else %}
     <div class="empty-state">
-        <h3 class="h5">Nenhum paciente cadastrado</h3>
-        <p class="text-muted">Cadastre os pacientes vinculados a esta residência.</p>
-        <a class="btn btn-primary" href="{{ url_for('cadastrar_paciente', casa_id=casa.id) }}">Cadastrar paciente</a>
+        <div class="empty-state-icon">
+            <i class="bi bi-person"></i>
+        </div>
+        <h3>Nenhum paciente cadastrado</h3>
+        <p>Cadastre os pacientes que residem nesta casa.</p>
+        <a class="btn btn-primary" href="{{ url_for('cadastrar_paciente', casa_id=casa.id) }}">
+            <i class="bi bi-plus"></i>
+            Cadastrar paciente
+        </a>
     </div>
 {% endif %}
-
-<a class="btn btn-link px-0 mt-3" href="{{ url_for('index') }}">Voltar para casas</a>
 {% endblock %}
