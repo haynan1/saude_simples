@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="h3 mb-3">Editar casa</h1>
+
+<form class="form-panel" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="mb-3">
+        <label class="form-label" for="quadra_id">Quadra</label>
+        <select class="form-select" id="quadra_id" name="quadra_id">
+            <option value="">Sem quadra</option>
+            {% for quadra in quadras %}
+                <option value="{{ quadra.id }}" {% if casa.quadra_id == quadra.id %}selected{% endif %}>Quadra Nº {{ quadra.numero_quadra }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="numero_casa">Número da casa</label>
+        <input class="form-control" id="numero_casa" name="numero_casa" type="number" min="1" value="{{ casa.numero_casa }}" required>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="endereco">Endereço</label>
+        <input class="form-control" id="endereco" name="endereco" type="text" value="{{ casa.endereco }}" required>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Salvar alterações</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('detalhes_casa', casa_id=casa.id) }}">Cancelar</a>
+    </div>
+</form>
+{% endblock %}
