@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Entrar — Saúde Simples</title>
+    <title>Recuperar senha — Saúde Simples</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -26,6 +26,11 @@
                 <span>Saúde Simples</span>
             </div>
 
+            <h1 class="h5 mb-2">Recuperar senha</h1>
+            <p class="text-muted mb-4">
+                Disponível porque você está acessando direto desta máquina. Defina uma nova senha abaixo.
+            </p>
+
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
@@ -39,16 +44,19 @@
 
             <form method="post">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="mb-4">
-                    <label class="form-label" for="senha">Senha</label>
-                    <input class="form-control" id="senha" name="senha" type="password" autocomplete="current-password" required autofocus>
+                <div class="mb-3">
+                    <label class="form-label" for="nova_senha">Nova senha</label>
+                    <input class="form-control" id="nova_senha" name="nova_senha" type="password" autocomplete="new-password" minlength="10" required autofocus>
+                    <div class="form-text">Mínimo de 10 caracteres.</div>
                 </div>
-                <button class="btn btn-primary w-100" type="submit">Entrar</button>
+                <div class="mb-4">
+                    <label class="form-label" for="confirmar_senha">Confirmar nova senha</label>
+                    <input class="form-control" id="confirmar_senha" name="confirmar_senha" type="password" autocomplete="new-password" minlength="10" required>
+                </div>
+                <button class="btn btn-primary w-100" type="submit">Redefinir senha</button>
             </form>
 
-            {% if recuperacao_local %}
-                <a class="btn btn-link w-100 mt-2" href="{{ url_for('recuperar_senha') }}">Esqueci a senha</a>
-            {% endif %}
+            <a class="btn btn-link w-100 mt-2" href="{{ url_for('login') }}">Voltar para o login</a>
         </div>
     </main>
 

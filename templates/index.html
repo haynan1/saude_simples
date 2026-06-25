@@ -12,36 +12,39 @@
     </div>
 </div>
 
-<section class="stats-grid mb-4">
-    <div class="stat-card">
-        <span>Total de casas</span>
+<section class="stats-hero">
+    <div class="stat-hero">
+        <span>Pacientes cadastrados</span>
+        <strong>{{ stats.total_pacientes }}</strong>
+    </div>
+    <div class="stat-hero stat-hero-secondary">
+        <span>Casas cadastradas</span>
         <strong>{{ stats.total_casas }}</strong>
     </div>
-    <div class="stat-card">
+</section>
+
+<section class="stats-strip mb-4">
+    <div class="stat-mini">
         <span>Casas vazias</span>
         <strong>{{ stats.casas_vazias }}</strong>
     </div>
-    <div class="stat-card">
-        <span>Pacientes</span>
-        <strong>{{ stats.total_pacientes }}</strong>
-    </div>
-    <div class="stat-card">
+    <div class="stat-mini">
         <span>Crianças</span>
         <strong>{{ stats.criancas }}</strong>
     </div>
-    <div class="stat-card">
+    <div class="stat-mini">
         <span>Idosos 60+</span>
         <strong>{{ stats.idosos }}</strong>
     </div>
-    <div class="stat-card">
+    <div class="stat-mini">
         <span>Gestantes</span>
         <strong>{{ stats.gestantes }}</strong>
     </div>
-    <div class="stat-card">
+    <div class="stat-mini">
         <span>Homens</span>
         <strong>{{ stats.homens }}</strong>
     </div>
-    <div class="stat-card">
+    <div class="stat-mini">
         <span>Mulheres</span>
         <strong>{{ stats.mulheres }}</strong>
     </div>

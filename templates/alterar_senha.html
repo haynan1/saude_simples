@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="h3 mb-3">Trocar senha</h1>
+
+<form class="form-panel" method="post" style="max-width: 480px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="mb-3">
+        <label class="form-label" for="senha_atual">Senha atual</label>
+        <input class="form-control" id="senha_atual" name="senha_atual" type="password" autocomplete="current-password" required autofocus>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="nova_senha">Nova senha</label>
+        <input class="form-control" id="nova_senha" name="nova_senha" type="password" autocomplete="new-password" minlength="10" required>
+        <div class="form-text">Mínimo de 10 caracteres.</div>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="confirmar_senha">Confirmar nova senha</label>
+        <input class="form-control" id="confirmar_senha" name="confirmar_senha" type="password" autocomplete="new-password" minlength="10" required>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Salvar nova senha</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('index') }}">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

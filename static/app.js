@@ -183,6 +183,12 @@ function renderExportPreview(data) {
     }
 }
 
+function setExportPreviewLoading(isLoading) {
+    document.querySelectorAll(".export-preview-stats strong").forEach((el) => {
+        el.classList.toggle("is-loading", isLoading);
+    });
+}
+
 function updateExportPreview() {
     const form = document.getElementById("exportFilteredPdfForm");
     if (!form?.dataset.previewUrl) return;
@@ -195,12 +201,18 @@ function updateExportPreview() {
     }
     exportPreviewController = new AbortController();
 
+    setExportPreviewLoading(true);
+
     const url = params.toString() ? `${form.dataset.previewUrl}?${params}` : form.dataset.previewUrl;
     fetch(url, { signal: exportPreviewController.signal })
         .then((response) => response.ok ? response.json() : Promise.reject())
-        .then(renderExportPreview)
+        .then((data) => {
+            setExportPreviewLoading(false);
+            renderExportPreview(data);
+        })
         .catch((error) => {
             if (error?.name === "AbortError") return;
+            setExportPreviewLoading(false);
             const description = document.querySelector(".export-preview-description");
             if (description) description.textContent = "Não foi possível atualizar a prévia agora.";
         });

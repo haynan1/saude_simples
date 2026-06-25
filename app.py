@@ -18,7 +18,19 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from db import (
+    BASE_DIR,
+    DATABASE,
+    MIN_PASSWORD_LENGTH,
+    criar_backup,
+    garantir_senha_inicial,
+    get_db_connection,
+    get_senha_hash,
+    init_db,
+    set_senha_hash,
+)
 
 load_dotenv()
 
@@ -35,22 +47,13 @@ if not SECRET_KEY:
     )
 app.secret_key = SECRET_KEY
 
-LOGIN_PASSWORD_HASH = os.environ.get("SAUDE_SIMPLES_PASSWORD_HASH")
-if not LOGIN_PASSWORD_HASH:
-    raise RuntimeError(
-        "SAUDE_SIMPLES_PASSWORD_HASH não definida. Crie um arquivo .env (veja .env.example) "
-        "ou gere o hash com `python -c \"from werkzeug.security import generate_password_hash; "
-        "print(generate_password_hash('sua-senha'))\"`."
-    )
+BOOTSTRAP_PASSWORD_HASH = os.environ.get("SAUDE_SIMPLES_PASSWORD_HASH")
 
 csrf = CSRFProtect(app)
 
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE = os.path.join(BASE_DIR, "database.db")
 
 LOGIN_ATTEMPT_LIMIT = 5
 LOGIN_ATTEMPT_WINDOW_SECONDS = 60
@@ -86,6 +89,16 @@ def proxima_url_segura(value):
         return value
     return url_for("index")
 
+
+def requisicao_e_local():
+    # request.remote_addr é o IP de quem conectou direto no socket — não vem de
+    # cabeçalho (X-Forwarded-For), então não é falsificável pelo cliente.
+    # ATENÇÃO: se este app for colocado detrás de um reverse proxy (nginx, etc.)
+    # na mesma máquina, o proxy passa a ser "quem conectou", e todo mundo do lado
+    # de fora passaria a aparecer como local. Nesse cenário, configure
+    # werkzeug.middleware.proxy_fix.ProxyFix ou desative esta rota.
+    return request.remote_addr in ("127.0.0.1", "::1")
+
 CONDICOES_SAUDE_OPCOES = [
     {"codigo": "gestante", "label": "Está gestante"},
     {"codigo": "abaixo_peso", "label": "Abaixo do peso"},
@@ -115,66 +128,6 @@ CONDICOES_SAUDE_OPCOES = [
     {"codigo": "outras_condicoes", "label": "Outras condições de saúde"},
 ]
 CONDICOES_SAUDE = [opcao["label"] for opcao in CONDICOES_SAUDE_OPCOES]
-
-
-def get_db_connection():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
-
-
-def init_db():
-    conn = get_db_connection()
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS quadras (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            numero_quadra INTEGER NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS casas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            quadra_id INTEGER,
-            numero_casa INTEGER,
-            endereco TEXT NOT NULL,
-            FOREIGN KEY(quadra_id) REFERENCES quadras(id) ON DELETE SET NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS pacientes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            casa_id INTEGER,
-            nome TEXT NOT NULL,
-            cpf TEXT,
-            telefone TEXT,
-            data_nascimento TEXT,
-            sexo TEXT,
-            nome_pai TEXT,
-            nome_mae TEXT,
-            condicoes_saude TEXT,
-            observacao TEXT,
-            FOREIGN KEY(casa_id) REFERENCES casas(id) ON DELETE CASCADE
-        )
-        """
-    )
-    columns = [row["name"] for row in conn.execute("PRAGMA table_info(pacientes)").fetchall()]
-    if "telefone" not in columns:
-        conn.execute("ALTER TABLE pacientes ADD COLUMN telefone TEXT")
-    if "sexo" not in columns:
-        conn.execute("ALTER TABLE pacientes ADD COLUMN sexo TEXT")
-    if "condicoes_saude" not in columns:
-        conn.execute("ALTER TABLE pacientes ADD COLUMN condicoes_saude TEXT")
-    casa_columns = [row["name"] for row in conn.execute("PRAGMA table_info(casas)").fetchall()]
-    if "quadra_id" not in casa_columns:
-        conn.execute("ALTER TABLE casas ADD COLUMN quadra_id INTEGER")
-    conn.commit()
-    conn.close()
 
 
 def get_next_house_number(quadra_id=None):
@@ -537,11 +490,11 @@ def login():
         client_ip = request.remote_addr or "desconhecido"
         if login_bloqueado(client_ip):
             flash("Muitas tentativas. Aguarde um minuto antes de tentar novamente.", "danger")
-            return render_template("login.html"), 429
+            return render_template("login.html", recuperacao_local=requisicao_e_local()), 429
 
         senha = request.form.get("senha", "")
 
-        if check_password_hash(LOGIN_PASSWORD_HASH, senha):
+        if check_password_hash(get_senha_hash(), senha):
             session.clear()
             session.permanent = True
             session["usuario_autenticado"] = True
@@ -552,13 +505,86 @@ def login():
         logger.warning("Tentativa de login falhou a partir de %s", client_ip)
         flash("Senha inválida.", "danger")
 
-    return render_template("login.html")
+    return render_template("login.html", recuperacao_local=requisicao_e_local())
 
 
 @app.route("/logout", methods=["POST"])
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/recuperar-senha", methods=["GET", "POST"])
+def recuperar_senha():
+    if not requisicao_e_local():
+        flash("A recuperação de senha só está disponível acessando o sistema na própria máquina onde ele roda.", "danger")
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        nova_senha = request.form.get("nova_senha", "")
+        confirmar_senha = request.form.get("confirmar_senha", "")
+
+        if len(nova_senha) < MIN_PASSWORD_LENGTH:
+            flash(f"A nova senha deve ter pelo menos {MIN_PASSWORD_LENGTH} caracteres.", "danger")
+            return render_template("recuperar_senha.html")
+
+        if nova_senha != confirmar_senha:
+            flash("A confirmação não corresponde à nova senha.", "danger")
+            return render_template("recuperar_senha.html")
+
+        try:
+            criar_backup("antes_recuperar_senha")
+        except (sqlite3.Error, OSError) as exc:
+            logger.error("Falha ao criar backup antes de recuperar senha: %s", exc)
+            flash("Não foi possível criar backup de segurança. Tente novamente.", "danger")
+            return render_template("recuperar_senha.html")
+
+        set_senha_hash(generate_password_hash(nova_senha))
+        session.clear()
+        logger.warning("Senha redefinida via recuperação local (acesso 127.0.0.1).")
+        flash("Senha redefinida com sucesso. Faça login com a nova senha.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("recuperar_senha.html")
+
+
+@app.route("/conta/senha", methods=["GET", "POST"])
+@login_required
+def alterar_senha():
+    if request.method == "POST":
+        client_ip = request.remote_addr or "desconhecido"
+        if login_bloqueado(client_ip):
+            flash("Muitas tentativas. Aguarde um minuto antes de tentar novamente.", "danger")
+            return render_template("alterar_senha.html"), 429
+
+        senha_atual = request.form.get("senha_atual", "")
+        nova_senha = request.form.get("nova_senha", "")
+        confirmar_senha = request.form.get("confirmar_senha", "")
+
+        if not check_password_hash(get_senha_hash(), senha_atual):
+            registrar_falha_login(client_ip)
+            logger.warning("Tentativa de troca de senha com senha atual incorreta a partir de %s", client_ip)
+            flash("Senha atual incorreta.", "danger")
+            return render_template("alterar_senha.html")
+
+        if len(nova_senha) < MIN_PASSWORD_LENGTH:
+            flash(f"A nova senha deve ter pelo menos {MIN_PASSWORD_LENGTH} caracteres.", "danger")
+            return render_template("alterar_senha.html")
+
+        if nova_senha != confirmar_senha:
+            flash("A confirmação não corresponde à nova senha.", "danger")
+            return render_template("alterar_senha.html")
+
+        if check_password_hash(get_senha_hash(), nova_senha):
+            flash("A nova senha deve ser diferente da senha atual.", "danger")
+            return render_template("alterar_senha.html")
+
+        set_senha_hash(generate_password_hash(nova_senha))
+        logger.info("Senha alterada com sucesso a partir de %s", client_ip)
+        flash("Senha alterada com sucesso.", "success")
+        return redirect(url_for("index"))
+
+    return render_template("alterar_senha.html")
 
 
 @app.route("/")
@@ -663,6 +689,13 @@ def editar_quadra(quadra_id):
 @app.route("/quadra/<int:quadra_id>/excluir", methods=["POST"])
 @login_required
 def excluir_quadra(quadra_id):
+    try:
+        criar_backup("antes_excluir_quadra")
+    except (sqlite3.Error, OSError) as exc:
+        logger.error("Falha ao criar backup antes de excluir quadra %s: %s", quadra_id, exc)
+        flash("Não foi possível criar backup de segurança. Exclusão cancelada.", "danger")
+        return redirect(url_for("index"))
+
     conn = get_db_connection()
     conn.execute("UPDATE casas SET quadra_id = NULL WHERE quadra_id = ?", (quadra_id,))
     conn.execute("DELETE FROM quadras WHERE id = ?", (quadra_id,))
@@ -804,6 +837,13 @@ def editar_casa(casa_id):
 @app.route("/casa/<int:casa_id>/excluir", methods=["POST"])
 @login_required
 def excluir_casa(casa_id):
+    try:
+        criar_backup("antes_excluir_casa")
+    except (sqlite3.Error, OSError) as exc:
+        logger.error("Falha ao criar backup antes de excluir casa %s: %s", casa_id, exc)
+        flash("Não foi possível criar backup de segurança. Exclusão cancelada.", "danger")
+        return redirect(url_for("index"))
+
     conn = get_db_connection()
     conn.execute("DELETE FROM casas WHERE id = ?", (casa_id,))
     conn.commit()
@@ -907,6 +947,13 @@ def editar_paciente(paciente_id):
 @app.route("/paciente/<int:paciente_id>/excluir", methods=["POST"])
 @login_required
 def excluir_paciente(paciente_id):
+    try:
+        criar_backup("antes_excluir_paciente")
+    except (sqlite3.Error, OSError) as exc:
+        logger.error("Falha ao criar backup antes de excluir paciente %s: %s", paciente_id, exc)
+        flash("Não foi possível criar backup de segurança. Exclusão cancelada.", "danger")
+        return redirect(url_for("index"))
+
     conn = get_db_connection()
     paciente = conn.execute("SELECT casa_id FROM pacientes WHERE id = ?", (paciente_id,)).fetchone()
 
@@ -1388,6 +1435,12 @@ def exportar_pdf():
 
 if __name__ == "__main__":
     init_db()
+    garantir_senha_inicial(BOOTSTRAP_PASSWORD_HASH)
+    try:
+        criar_backup("inicializacao")
+    except (sqlite3.Error, OSError) as exc:
+        logger.warning("Falha ao criar backup de inicialização: %s", exc)
+
     debug_enabled = os.environ.get("SAUDE_SIMPLES_DEBUG", "").lower() in ("1", "true", "sim", "yes")
     host = os.environ.get("SAUDE_SIMPLES_HOST", "127.0.0.1")
     port = int(os.environ.get("SAUDE_SIMPLES_PORT", "5001"))
