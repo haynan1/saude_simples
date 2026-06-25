@@ -1,26 +1,39 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="page-header">
+<div class="patient-house-card">
     <div>
         <a class="page-back" href="{{ url_for('index') }}">
             <i class="bi bi-arrow-left"></i>
             Casas
         </a>
         <h1 class="page-header-title">Casa {{ casa.numero_casa }}</h1>
-        <div class="d-flex flex-wrap gap-3 mt-1">
+        <div class="house-meta">
             {% if casa.numero_quadra %}
-                <span class="page-header-subtitle">Quadra {{ casa.numero_quadra }}</span>
+                <span class="meta-pill">
+                    <i class="bi bi-grid-3x3-gap"></i>
+                    Quadra {{ casa.numero_quadra }}
+                </span>
             {% endif %}
-            <span class="page-header-subtitle">{{ casa.endereco }}</span>
+            <span class="meta-pill">
+                <i class="bi bi-geo-alt"></i>
+                {{ casa.endereco }}
+            </span>
+            <span class="meta-pill">
+                <i class="bi bi-people"></i>
+                {{ pacientes|length }} paciente(s)
+            </span>
         </div>
     </div>
     <div class="page-header-actions">
         <a class="btn btn-primary" href="{{ url_for('cadastrar_paciente', casa_id=casa.id) }}">
-            <i class="bi bi-plus"></i>
+            <i class="bi bi-person-plus"></i>
             Cadastrar paciente
         </a>
-        <a class="btn btn-outline-secondary" href="{{ url_for('editar_casa', casa_id=casa.id) }}">Editar casa</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('editar_casa', casa_id=casa.id) }}">
+            <i class="bi bi-pencil"></i>
+            Editar casa
+        </a>
     </div>
 </div>
 

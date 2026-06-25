@@ -1,5 +1,9 @@
 <form class="form-panel" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-section-title">
+        <i class="bi bi-person-vcard"></i>
+        Dados do paciente
+    </div>
     <div class="row g-3">
         <div class="col-md-8">
             <label class="form-label" for="nome">Nome</label>
@@ -30,6 +34,13 @@
             </select>
         </div>
 
+        <div class="col-12 mt-2">
+            <div class="form-section-title">
+                <i class="bi bi-people"></i>
+                Vínculos familiares
+            </div>
+        </div>
+
         <div class="col-md-4">
             <label class="form-label" for="nome_pai">Nome do pai</label>
             <input class="form-control" id="nome_pai" name="nome_pai" type="text" value="{{ paciente.nome_pai if paciente else '' }}">
@@ -41,7 +52,11 @@
         </div>
 
         {% set selecionadas = paciente.condicoes_saude|condicoes_codigos if paciente else [] %}
-        <div class="col-12">
+        <div class="col-12 mt-2">
+            <div class="form-section-title">
+                <i class="bi bi-heart-pulse"></i>
+                Saúde e observações
+            </div>
             <label class="form-label">Condições/Situações de saúde gerais</label>
             <div class="dropdown health-dropdown">
                 <button class="btn btn-outline-secondary dropdown-toggle w-100 text-start" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
@@ -78,8 +93,14 @@
         </div>
     </div>
 
-    <div class="d-flex gap-2 mt-4">
-        <button class="btn btn-primary" type="submit">Salvar paciente</button>
-        <a class="btn btn-outline-secondary" href="{{ url_for('detalhes_casa', casa_id=casa.id) }}">Cancelar</a>
+    <div class="d-flex flex-wrap gap-2 mt-4">
+        <button class="btn btn-primary" type="submit">
+            <i class="bi bi-check2-circle"></i>
+            Salvar paciente
+        </button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('detalhes_casa', casa_id=casa.id) }}">
+            <i class="bi bi-x-lg"></i>
+            Cancelar
+        </a>
     </div>
 </form>

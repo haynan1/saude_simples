@@ -1,4 +1,25 @@
 let pendingDeleteForm = null;
+const themeToggle = document.querySelector(".theme-toggle");
+
+function applyTheme(theme) {
+    const safeTheme = theme === "light" ? "light" : "dark";
+    document.documentElement.dataset.appTheme = safeTheme;
+    document.documentElement.dataset.bsTheme = safeTheme;
+    localStorage.setItem("saude-simples-theme", safeTheme);
+
+    const icon = themeToggle?.querySelector("i");
+    if (icon) {
+        icon.className = safeTheme === "dark" ? "bi bi-moon-stars" : "bi bi-sun";
+    }
+}
+
+applyTheme(localStorage.getItem("saude-simples-theme") || "dark");
+
+themeToggle?.addEventListener("click", () => {
+    const current = document.documentElement.dataset.appTheme === "light" ? "light" : "dark";
+    applyTheme(current === "dark" ? "light" : "dark");
+});
+
 const confirmDeleteModalElement = document.getElementById("confirmDeleteModal");
 const confirmDeleteMessage = document.getElementById("confirmDeleteMessage");
 const confirmDeleteButton = document.getElementById("confirmDeleteButton");

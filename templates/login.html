@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-br" data-bs-theme="dark">
+<html lang="pt-br" data-bs-theme="dark" data-app-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -42,7 +42,10 @@
                         autofocus
                     >
                 </div>
-                <button class="btn btn-primary w-100" type="submit">Entrar</button>
+                <button class="btn btn-primary w-100" type="submit">
+                    <i class="bi bi-box-arrow-in-right"></i>
+                    Entrar
+                </button>
             </form>
 
             {% if recuperacao_local %}
@@ -52,6 +55,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='app.js') }}?v=6"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=7"></script>
 </body>
 </html>
