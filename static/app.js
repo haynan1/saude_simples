@@ -1,33 +1,3 @@
-const savedTheme = localStorage.getItem("theme");
-const preferredTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-const initialTheme = savedTheme || preferredTheme;
-
-document.documentElement.setAttribute("data-bs-theme", initialTheme);
-
-function updateThemeButton(theme) {
-    const button = document.querySelector(".theme-toggle");
-    if (!button) return;
-
-    const icon = button.querySelector("i");
-    if (icon) {
-        icon.className = theme === "dark" ? "bi bi-sun" : "bi bi-moon-stars";
-    }
-
-    button.title = theme === "dark" ? "Modo claro" : "Modo noturno";
-    button.setAttribute("aria-label", theme === "dark" ? "Alternar para modo claro" : "Alternar para modo noturno");
-}
-
-updateThemeButton(initialTheme);
-
-document.querySelector(".theme-toggle")?.addEventListener("click", () => {
-    const currentTheme = document.documentElement.getAttribute("data-bs-theme") || "light";
-    const nextTheme = currentTheme === "dark" ? "light" : "dark";
-
-    document.documentElement.setAttribute("data-bs-theme", nextTheme);
-    localStorage.setItem("theme", nextTheme);
-    updateThemeButton(nextTheme);
-});
-
 let pendingDeleteForm = null;
 const confirmDeleteModalElement = document.getElementById("confirmDeleteModal");
 const confirmDeleteMessage = document.getElementById("confirmDeleteMessage");
