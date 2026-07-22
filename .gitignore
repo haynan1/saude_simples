@@ -1,6 +1,9 @@
 venv/
 __pycache__/
 *.pyc
-database.db
+.pytest_cache/
+instance/
 backups/
 .env
+temp
+node_modules/

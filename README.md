@@ -2,6 +2,8 @@
 
 Sistema local de cadastro de quadras, casas e pacientes para uma unidade de saúde, com exportação de relatórios em PDF. Não depende de internet nem de serviços externos — roda inteiramente na máquina onde é instalado.
 
+Interface: **Tailwind CSS 3 + Alpine.js (build CSP)**, tudo vendorizado — zero CDN. Tema claro/escuro, sidebar colapsável e painel de acessibilidade (tamanho de fonte, realce em negrito) persistidos por dispositivo.
+
 ## Requisitos
 
 - Python 3.9 ou superior
@@ -66,7 +68,7 @@ Depois disso é só fazer login normalmente com a nova senha.
 
 ## Trocar a senha já logado
 
-Dentro do sistema, clique no ícone de chave (🔑) no menu superior. Pede a senha atual + a nova senha — diferente do `resetar_senha.py`, que é pra quando você **não** sabe a senha atual.
+Dentro do sistema, use **Alterar senha** na barra lateral (seção "Conta"). Pede a senha atual + a nova senha — diferente do `resetar_senha.py`, que é pra quando você **não** sabe a senha atual.
 
 ## Backups automáticos
 
@@ -76,7 +78,9 @@ O sistema guarda cópias de segurança do banco de dados em `backups/`, criadas 
 - Antes de excluir uma quadra, casa ou paciente.
 - Antes de redefinir a senha pelo `resetar_senha.py`.
 
-São mantidos os 50 backups mais recentes; os mais antigos são removidos automaticamente. Se uma exclusão importante der problema, basta restaurar o `database.db` a partir do arquivo mais recente em `backups/` (renomeie para `database.db` com o servidor parado).
+São mantidos os 50 backups mais recentes; os mais antigos são removidos automaticamente. Se uma exclusão importante der problema, basta restaurar o banco a partir do arquivo mais recente em `backups/` (copie para `instance/database.db` com o servidor parado).
+
+O banco fica em `instance/database.db`. Instalações antigas (banco na raiz do projeto) são migradas automaticamente no primeiro boot.
 
 ## Variáveis de ambiente (`.env`)
 
@@ -87,19 +91,35 @@ São mantidos os 50 backups mais recentes; os mais antigos são removidos automa
 | `SAUDE_SIMPLES_DEBUG` | Não | `true` usa o servidor de desenvolvimento do Flask; `false` (padrão) usa waitress, recomendado mesmo em uso local. |
 | `SAUDE_SIMPLES_HOST` | Não | Padrão `127.0.0.1` (só acessível na própria máquina). |
 | `SAUDE_SIMPLES_PORT` | Não | Padrão `5001`. |
+| `SAUDE_SIMPLES_FORCE_HTTPS` | Não | `true` marca o cookie de sessão como `Secure`. Ligue apenas se houver TLS na frente. |
 
 O `.env` nunca deve ser commitado — já está no `.gitignore`.
 
 ## Estrutura
 
 ```
-app.py              # rotas, regras de negócio, geração de PDF
-db.py               # banco de dados, senha e backups (sem depender do Flask)
-resetar_senha.py    # ferramenta de recuperação/definição de senha
-templates/          # páginas HTML
-static/             # CSS e JS
-database.db         # banco SQLite (gerado automaticamente, não commitado)
-backups/            # cópias de segurança automáticas (não commitado)
+app.py               # rotas, regras de negócio, geração de PDF, CSP/headers
+db.py                # banco de dados, senha e backups (sem depender do Flask)
+resetar_senha.py     # ferramenta de recuperação/definição de senha
+templates/           # páginas HTML (base.html é o layout mestre)
+static/css/          # app.css (componentes/tema escuro) + tailwind.css compilado
+static/js/           # alpine-components, csp-events, masks, app, smooth-navigation
+static/vendor/       # Alpine.js (build CSP) vendorizado
+static/src/          # fonte do Tailwind (para rebuild)
+tailwind.config.js   # config do build de CSS
+tests/               # suíte de testes (segurança + fluxos) — pytest tests
+instance/database.db # banco SQLite (gerado automaticamente, não commitado)
+backups/             # cópias de segurança automáticas (não commitado)
+```
+
+### Rebuild do CSS (apenas se criar classes novas nos templates)
+
+O `static/css/tailwind.css` já vem compilado — o sistema funciona sem Node. Se você
+criar classes Tailwind novas nos templates:
+
+```bash
+npm install
+npm run build:css
 ```
 
 ## Segurança
@@ -108,4 +128,7 @@ backups/            # cópias de segurança automáticas (não commitado)
 - Login tem limite de 5 tentativas por minuto por IP.
 - Sessão expira em 8 horas.
 - Todas as rotas, exceto login, exigem autenticação.
-- `database.db`, `backups/` e `.env` ficam fora do controle de versão.
+- Content-Security-Policy com nonce por resposta: nenhum script/estilo inline
+  roda sem autorização do servidor; Alpine.js usa o build CSP (sem `eval`).
+- Nenhum recurso externo (CDN, fontes, ícones) — tudo servido localmente.
+- `instance/`, `backups/` e `.env` ficam fora do controle de versão.

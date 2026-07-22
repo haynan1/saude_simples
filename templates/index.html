@@ -1,269 +1,204 @@
 {% extends "base.html" %}
+{% block title %}Painel{% endblock %}
 
 {% block content %}
-<section class="dashboard-shell">
-    <div class="dashboard-toolbar">
-        <div>
-            <span class="dashboard-eyebrow">
-                <i class="bi bi-activity"></i>
-                Dashboard ACS
-            </span>
-            <h1>Quadras e casas cadastradas</h1>
-            <p>Visão operacional do território, moradores e condições de saúde.</p>
-        </div>
-        <div class="dashboard-toolbar-actions">
-            <button
-                class="btn btn-outline-secondary"
-                type="button"
-                data-bs-toggle="modal"
-                data-bs-target="#exportPdfModal"
-                title="Exportar PDF"
-            >
-                <i class="bi bi-file-earmark-pdf"></i>
-                Exportar PDF
-            </button>
-            <a class="btn btn-outline-primary" href="{{ url_for('cadastrar_quadra') }}">
-                <i class="bi bi-grid-3x3-gap"></i>
-                Nova quadra
-            </a>
-            <a class="btn btn-primary" href="{{ url_for('cadastrar_casa') }}">
-                <i class="bi bi-house-add"></i>
-                Nova casa
-            </a>
-        </div>
+<!-- Cabeçalho -->
+<div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-8">
+  <div>
+    <p class="text-xs font-bold uppercase tracking-wider text-blue-600 mb-1">Painel do ACS</p>
+    <h1 class="text-2xl font-bold tracking-tight text-slate-900">Quadras e casas cadastradas</h1>
+    <p class="text-sm text-slate-500 mt-1">Visão operacional do território, moradores e condições de saúde.</p>
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    <button type="button" data-export-open class="btn-secondary">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 7H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V18a2 2 0 01-2 2z"/></svg>
+      Exportar PDF
+    </button>
+    <a href="{{ url_for('cadastrar_quadra') }}" class="btn-secondary">Nova quadra</a>
+    <a href="{{ url_for('cadastrar_casa') }}" class="btn-primary">Nova casa</a>
+  </div>
+</div>
+
+<!-- Indicadores -->
+<div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-8">
+  <div class="rounded-xl border border-blue-200 bg-blue-50 p-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">Pacientes</p>
+    <p class="text-2xl font-bold text-blue-900 mt-1">{{ stats.total_pacientes }}</p>
+    <p class="text-xs text-blue-700 mt-0.5">Cadastrados no território</p>
+  </div>
+  <div class="rounded-xl border border-slate-200 bg-white p-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Casas</p>
+    <p class="text-2xl font-bold text-slate-900 mt-1">{{ stats.total_casas }}</p>
+    <p class="text-xs text-slate-500 mt-0.5">{{ stats.casas_vazias }} vazia(s)</p>
+  </div>
+  <div class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">Idosos 60+</p>
+    <p class="text-2xl font-bold text-amber-800 mt-1">{{ stats.idosos }}</p>
+    <p class="text-xs text-amber-700 mt-0.5">Acompanhamento prioritário</p>
+  </div>
+  <div class="rounded-xl border border-red-200 bg-red-50 p-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-red-700">Gestantes</p>
+    <p class="text-2xl font-bold text-red-800 mt-1">{{ stats.gestantes }}</p>
+    <p class="text-xs text-red-700 mt-0.5">Monitoramento ativo</p>
+  </div>
+  <div class="rounded-xl border border-slate-200 bg-white p-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Crianças</p>
+    <p class="text-2xl font-bold text-slate-900 mt-1">{{ stats.criancas }}</p>
+    <p class="text-xs text-slate-500 mt-0.5">Cadastros infantis</p>
+  </div>
+  <div class="rounded-xl border border-slate-200 bg-white p-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Homens / Mulheres</p>
+    <p class="text-2xl font-bold text-slate-900 mt-1">{{ stats.homens }} / {{ stats.mulheres }}</p>
+    <p class="text-xs text-slate-500 mt-0.5">Distribuição por sexo</p>
+  </div>
+</div>
+
+<!-- Busca de paciente -->
+<section class="rounded-xl border border-slate-200 bg-white p-5 mb-8">
+  <div class="mb-3">
+    <h2 class="text-sm font-bold text-slate-900">Buscar paciente</h2>
+    <p class="text-xs text-slate-500">Pesquise por nome, CPF ou CNS — a casa do paciente abre direto.</p>
+  </div>
+  <form method="get" action="{{ url_for('index') }}" role="search" class="flex flex-col sm:flex-row gap-2">
+    <input
+      class="form-input flex-1"
+      id="busca"
+      type="search"
+      name="busca"
+      value="{{ busca }}"
+      placeholder="Digite para localizar um paciente"
+      aria-label="Buscar paciente"
+      autocomplete="off"
+    >
+    <div class="flex gap-2">
+      <button class="btn-primary" type="submit">Buscar</button>
+      {% if busca %}
+        <a class="btn-secondary" href="{{ url_for('index') }}">Limpar</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if busca %}
+    <div class="mt-4 space-y-2">
+      {% if pacientes_busca %}
+        {% for paciente in pacientes_busca %}
+          <div class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-slate-900 truncate">{{ paciente.nome }}</p>
+              <p class="text-xs text-slate-500">Casa {{ paciente.numero_casa }}{% if paciente.numero_quadra %} · Quadra {{ paciente.numero_quadra }}{% endif %}{% if paciente.endereco %} · {{ paciente.endereco }}{% endif %}</p>
+            </div>
+            <a class="btn-secondary shrink-0" href="{{ url_for('detalhes_casa', casa_id=paciente.casa_id) }}">Abrir</a>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="text-sm text-slate-500">Nenhum paciente encontrado.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+</section>
+
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+  <!-- Casas -->
+  <section class="xl:col-span-2 rounded-xl border border-slate-200 bg-white p-5">
+    <div class="flex items-center justify-between gap-3 mb-4">
+      <div>
+        <h2 class="text-sm font-bold text-slate-900">Casas</h2>
+        <p class="text-xs text-slate-500">{{ casas|length }} cadastrada(s)</p>
+      </div>
+      <a class="btn-secondary" href="{{ url_for('cadastrar_casa') }}">Cadastrar casa</a>
     </div>
 
-    <details class="dashboard-section metrics-section" open>
-        <summary>
-            <span>
-                <i class="bi bi-speedometer2"></i>
-                Indicadores
-            </span>
-            <i class="bi bi-chevron-down"></i>
-        </summary>
-        <div class="metric-grid">
-            <div class="metric-card metric-primary">
-                <span>Pacientes</span>
-                <strong>{{ stats.total_pacientes }}</strong>
-                <small>Cadastrados no território</small>
+    {% if casas %}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {% for casa in casas %}
+          <article class="rounded-lg border border-slate-200 bg-slate-50 p-4 flex flex-col gap-2">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{{ 'Quadra ' ~ casa.numero_quadra if casa.numero_quadra else 'Sem quadra' }}</p>
+                <h3 class="text-base font-bold text-slate-900">Casa {{ casa.numero_casa }}</h3>
+              </div>
+              {% if casa.total_pacientes == 0 %}
+                <span class="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-bold text-slate-600 shrink-0">vazia</span>
+              {% else %}
+                <span class="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs font-bold text-blue-700 shrink-0">{{ casa.total_pacientes }} pac.</span>
+              {% endif %}
             </div>
-            <div class="metric-card metric-blue">
-                <span>Casas</span>
-                <strong>{{ stats.total_casas }}</strong>
-                <small>{{ stats.casas_vazias }} vazia(s)</small>
+            <p class="text-sm text-slate-600 flex-1">{{ casa.endereco }}</p>
+            <div class="flex items-center gap-2 pt-1">
+              <a class="btn-primary house-tile-btn" href="{{ url_for('detalhes_casa', casa_id=casa.id) }}">Abrir</a>
+              <a class="btn-secondary house-tile-btn" href="{{ url_for('editar_casa', casa_id=casa.id) }}">Editar</a>
+              <form class="ml-auto" method="post"
+                    action="{{ url_for('excluir_casa', casa_id=casa.id) }}"
+                    data-confirm="Excluir esta casa e todos os pacientes vinculados?"
+                    data-confirm-title="Excluir casa {{ casa.numero_casa }}?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn-danger-outline house-tile-btn" type="submit" title="Excluir casa">Excluir</button>
+              </form>
             </div>
-            <div class="metric-card metric-gold">
-                <span>Idosos 60+</span>
-                <strong>{{ stats.idosos }}</strong>
-                <small>Acompanhamento prioritário</small>
-            </div>
-            <div class="metric-card metric-pink">
-                <span>Gestantes</span>
-                <strong>{{ stats.gestantes }}</strong>
-                <small>Monitoramento ativo</small>
-            </div>
-            <div class="metric-card">
-                <span>Crianças</span>
-                <strong>{{ stats.criancas }}</strong>
-                <small>Cadastros infantis</small>
-            </div>
-            <div class="metric-card">
-                <span>Homens / Mulheres</span>
-                <strong>{{ stats.homens }} / {{ stats.mulheres }}</strong>
-                <small>Distribuição por sexo</small>
-            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="flex flex-col items-center justify-center text-center py-12">
+        <div class="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center mb-3">
+          <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
         </div>
-    </details>
+        <h3 class="text-sm font-bold text-slate-900 mb-1">Nenhuma casa cadastrada</h3>
+        <p class="text-sm text-slate-500 mb-4">Comece cadastrando a primeira residência para organizar os pacientes.</p>
+        <a class="btn-primary" href="{{ url_for('cadastrar_casa') }}">Cadastrar primeira casa</a>
+      </div>
+    {% endif %}
+  </section>
 
-    <details class="dashboard-section command-section" open>
-        <summary>
-            <span>
-                <i class="bi bi-search"></i>
-                Buscar paciente
-                <small>Pesquise por nome, CPF ou CNS</small>
-            </span>
-            <i class="bi bi-chevron-down"></i>
-        </summary>
-        <form class="dashboard-search command-search" method="get" action="{{ url_for('index') }}" role="search">
-            <input
-                class="form-control"
-                id="busca"
-                type="search"
-                name="busca"
-                value="{{ busca }}"
-                placeholder="Digite para localizar um paciente"
-                aria-label="Buscar paciente"
-                autocomplete="off"
-            >
-            <button class="btn btn-primary" type="submit">
-                <i class="bi bi-search"></i>
-                Buscar
-            </button>
-            {% if busca %}
-                <a class="btn btn-outline-secondary" href="{{ url_for('index') }}">
-                    <i class="bi bi-x-lg"></i>
-                    Limpar
-                </a>
-            {% endif %}
-        </form>
-
-        {% if busca %}
-            <div class="patient-results-grid">
-                {% if pacientes_busca %}
-                    {% for paciente in pacientes_busca %}
-                        <div class="patient-result">
-                            <div>
-                                <strong>{{ paciente.nome }}</strong>
-                                <span>Casa {{ paciente.numero_casa }}{% if paciente.numero_quadra %} · Quadra {{ paciente.numero_quadra }}{% endif %}</span>
-                            </div>
-                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('detalhes_casa', casa_id=paciente.casa_id) }}">
-                                Abrir
-                            </a>
-                        </div>
-                    {% endfor %}
-                {% else %}
-                    <p class="sidebar-empty">Nenhum paciente encontrado.</p>
-                {% endif %}
-            </div>
-        {% endif %}
-    </details>
-
-    <div class="management-grid">
-        <section class="dashboard-main-panel">
-            <details class="dashboard-section embedded-section" open>
-                <summary>
-                    <span>
-                        <i class="bi bi-houses"></i>
-                        Casas
-                        <small>{{ casas|length }} cadastrada(s)</small>
-                    </span>
-                    <i class="bi bi-chevron-down"></i>
-                </summary>
-                <div class="panel-actions-row">
-                    <a class="btn btn-sm btn-primary" href="{{ url_for('cadastrar_casa') }}">
-                        <i class="bi bi-plus-lg"></i>
-                        Cadastrar casa
-                    </a>
-                </div>
-
-                {% if casas %}
-                    <div class="house-board house-board-compact">
-                        {% for casa in casas %}
-                            <article class="house-tile">
-                                <div class="house-tile-top">
-                                    <div>
-                                        <span class="house-zone">{{ 'Quadra ' ~ casa.numero_quadra if casa.numero_quadra else 'Sem quadra' }}</span>
-                                        <h3>Casa {{ casa.numero_casa }}</h3>
-                                    </div>
-                                    <span class="house-patient-count {% if casa.total_pacientes == 0 %}is-empty{% endif %}">
-                                        {{ casa.total_pacientes }} pac.
-                                    </span>
-                                </div>
-                                <p>{{ casa.endereco }}</p>
-                                <div class="house-tile-actions">
-                                    <a class="btn btn-sm btn-primary" href="{{ url_for('detalhes_casa', casa_id=casa.id) }}">
-                                        <i class="bi bi-folder2-open"></i>
-                                        Abrir
-                                    </a>
-                                    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('editar_casa', casa_id=casa.id) }}">
-                                        <i class="bi bi-pencil"></i>
-                                        Editar
-                                    </a>
-                                    <form class="d-inline confirm-delete-form ms-auto" method="post"
-                                          action="{{ url_for('excluir_casa', casa_id=casa.id) }}"
-                                          data-confirm-message="Excluir esta casa e todos os pacientes vinculados?">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                        <button class="btn btn-sm btn-outline-danger" type="submit" title="Excluir casa">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </form>
-                                </div>
-                            </article>
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    <div class="empty-state">
-                        <div class="empty-state-icon">
-                            <i class="bi bi-house"></i>
-                        </div>
-                        <h3>Nenhuma casa cadastrada</h3>
-                        <p>Comece cadastrando a primeira residência para organizar os pacientes.</p>
-                        <a class="btn btn-primary" href="{{ url_for('cadastrar_casa') }}">
-                            <i class="bi bi-plus-lg"></i>
-                            Cadastrar primeira casa
-                        </a>
-                    </div>
-                {% endif %}
-            </details>
-        </section>
-
-        <section class="side-card">
-            <details class="dashboard-section embedded-section" open>
-                <summary>
-                    <span>
-                        <i class="bi bi-grid-3x3-gap"></i>
-                        Quadras
-                        <small>{{ quadras|length }} cadastrada(s)</small>
-                    </span>
-                    <i class="bi bi-chevron-down"></i>
-                </summary>
-                <div class="panel-actions-row">
-                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('cadastrar_quadra') }}">
-                        <i class="bi bi-plus-lg"></i>
-                        Nova quadra
-                    </a>
-                </div>
-                {% if quadras %}
-                    <div class="compact-list">
-                        {% for quadra in quadras %}
-                            <div class="compact-row">
-                                <div>
-                                    <strong>Quadra {{ quadra.numero_quadra }}</strong>
-                                    <span>{{ quadra.total_casas }} casa(s)</span>
-                                </div>
-                                <div class="row-actions">
-                                    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('editar_quadra', quadra_id=quadra.id) }}">
-                                        <i class="bi bi-pencil"></i>
-                                        Editar
-                                    </a>
-                                    <form class="d-inline confirm-delete-form" method="post"
-                                          action="{{ url_for('excluir_quadra', quadra_id=quadra.id) }}"
-                                          data-confirm-message="Excluir esta quadra? As casas vinculadas ficarão sem quadra.">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                        <button class="btn btn-sm btn-outline-danger" type="submit" title="Excluir quadra">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </form>
-                                </div>
-                            </div>
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    <p class="sidebar-empty">Nenhuma quadra cadastrada.</p>
-                {% endif %}
-            </details>
-        </section>
+  <!-- Quadras -->
+  <section class="rounded-xl border border-slate-200 bg-white p-5 h-fit">
+    <div class="flex items-center justify-between gap-3 mb-4">
+      <div>
+        <h2 class="text-sm font-bold text-slate-900">Quadras</h2>
+        <p class="text-xs text-slate-500">{{ quadras|length }} cadastrada(s)</p>
+      </div>
+      <a class="btn-secondary" href="{{ url_for('cadastrar_quadra') }}">Nova quadra</a>
     </div>
+    {% if quadras %}
+      <div class="space-y-2">
+        {% for quadra in quadras %}
+          <div class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-slate-900">Quadra {{ quadra.numero_quadra }}</p>
+              <p class="text-xs text-slate-500">{{ quadra.total_casas }} casa(s)</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <a class="btn-secondary house-tile-btn" href="{{ url_for('editar_quadra', quadra_id=quadra.id) }}">Editar</a>
+              <form method="post"
+                    action="{{ url_for('excluir_quadra', quadra_id=quadra.id) }}"
+                    data-confirm="Excluir esta quadra? As casas vinculadas ficarão sem quadra."
+                    data-confirm-title="Excluir quadra {{ quadra.numero_quadra }}?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn-danger-outline house-tile-btn" type="submit" title="Excluir quadra">Excluir</button>
+              </form>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-sm text-slate-500">Nenhuma quadra cadastrada.</p>
+    {% endif %}
+  </section>
+</div>
 
-    <section class="side-card conditions-wide">
-        <details class="dashboard-section embedded-section" open>
-                <summary>
-                    <span>
-                        <i class="bi bi-heart-pulse"></i>
-                        Comorbidades
-                        <small>Resumo dos cadastros</small>
-                    </span>
-                    <i class="bi bi-chevron-down"></i>
-                </summary>
-                <div class="condition-list">
-                    {% for condicao, total in stats.comorbidades %}
-                        <div class="condition-row">
-                            <span>{{ condicao }}</span>
-                            <strong>{{ total }}</strong>
-                        </div>
-                    {% endfor %}
-                </div>
-        </details>
-    </section>
+<!-- Comorbidades -->
+<section class="rounded-xl border border-slate-200 bg-white p-5 mt-6">
+  <div class="mb-4">
+    <h2 class="text-sm font-bold text-slate-900">Comorbidades</h2>
+    <p class="text-xs text-slate-500">Resumo dos cadastros do território</p>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
+    {% for condicao, total in stats.comorbidades %}
+      <div class="flex items-center justify-between gap-3 border-b border-slate-100 py-2">
+        <span class="text-sm text-slate-600">{{ condicao }}</span>
+        <strong class="text-sm font-bold {{ 'text-blue-700' if total else 'text-slate-400' }}">{{ total }}</strong>
+      </div>
+    {% endfor %}
+  </div>
 </section>
 {% endblock %}

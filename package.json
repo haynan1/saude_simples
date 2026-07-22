@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "npm run build:css && npm run build:vendor",
+    "build:css": "tailwindcss -i ./static/src/tailwind.css -o ./static/css/tailwind.css --minify",
+    "build:vendor": "node -e \"require('fs').copyFileSync('node_modules/@alpinejs/csp/dist/cdn.min.js', 'static/vendor/alpine.js')\""
+  },
+  "devDependencies": {
+    "@alpinejs/csp": "3.15.12",
+    "tailwindcss": "3.4.17"
+  }
+}

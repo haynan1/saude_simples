@@ -1,6 +1,8 @@
 import logging
 import os
+import secrets
 import sqlite3
+import threading
 import time
 import unicodedata
 from datetime import datetime, timedelta
@@ -10,7 +12,7 @@ from io import BytesIO
 from xml.sax.saxutils import escape as xml_escape
 
 from dotenv import load_dotenv
-from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, flash, g, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_wtf import CSRFProtect
 from PIL import Image as PILImage
 from reportlab.lib import colors
@@ -54,24 +56,111 @@ csrf = CSRFProtect(app)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+# O sistema roda em rede local HTTP por padrão; se colocar TLS na frente,
+# ligue SAUDE_SIMPLES_FORCE_HTTPS=true para o cookie só trafegar via HTTPS.
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get(
+    "SAUDE_SIMPLES_FORCE_HTTPS", ""
+).lower() in ("1", "true", "sim", "yes")
+# Nenhum formulário legítimo chega perto disso — bloqueia payloads gigantes
+# antes de qualquer parsing.
+app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
+
+APP_VERSION = "2.0.0"
+
+
+def _compute_asset_version():
+    """Token de cache-busting dos estáticos: APP_VERSION + mtime mais recente da
+    pasta static. Muda automaticamente sempre que qualquer arquivo estático é
+    alterado, então não depende de lembrar de subir a versão à mão."""
+    latest = 0.0
+    static_dir = os.path.join(BASE_DIR, "static")
+    for root, _dirs, files in os.walk(static_dir):
+        for name in files:
+            try:
+                latest = max(latest, os.path.getmtime(os.path.join(root, name)))
+            except OSError:
+                continue
+    return f"{APP_VERSION}-{int(latest)}" if latest else APP_VERSION
+
+
+ASSET_VERSION = _compute_asset_version()
+
+
+@app.before_request
+def prepare_csp_nonce():
+    # Um nonce novo por resposta permite scripts/estilos inline autorizados
+    # sem liberar execução inline para qualquer conteúdo injetado.
+    g.csp_nonce = secrets.token_urlsafe(24)
+
+
+@app.context_processor
+def inject_csp_nonce():
+    return {"csp_nonce": g.get("csp_nonce", "")}
+
+
+# Cache-busting: carimba todo url_for('static', ...) com ?v=ASSET_VERSION.
+# Uma versão nova => URLs novas => o navegador baixa os estáticos atuais e
+# abandona os da versão anterior. Não exige tocar nos templates.
+@app.url_defaults
+def _stamp_static_version(endpoint, values):
+    if endpoint == "static" and values is not None and "filename" in values:
+        values.setdefault("v", ASSET_VERSION)
+
+
+@app.context_processor
+def inject_asset_version():
+    return {"asset_version": ASSET_VERSION}
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    nonce = g.get("csp_nonce", "")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        f"script-src 'self' 'nonce-{nonce}'; "
+        f"style-src 'self' 'nonce-{nonce}'; "
+        # O Alpine (build CSP) alterna visibilidade via style=. A exceção fica
+        # restrita a atributos; blocos <style> continuam protegidos pelo nonce.
+        "style-src-attr 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'",
+    )
+    return response
 
 LOGIN_ATTEMPT_LIMIT = 5
 LOGIN_ATTEMPT_WINDOW_SECONDS = 60
 _login_attempts = {}
+# waitress atende com múltiplas threads; o lock evita que duas falhas
+# simultâneas do mesmo IP se sobrescrevam e furem o limite.
+_login_attempts_lock = threading.Lock()
 
 
 def registrar_falha_login(client_ip):
     now = time.monotonic()
-    attempts = [t for t in _login_attempts.get(client_ip, []) if now - t < LOGIN_ATTEMPT_WINDOW_SECONDS]
-    attempts.append(now)
-    _login_attempts[client_ip] = attempts
+    with _login_attempts_lock:
+        attempts = [
+            t for t in _login_attempts.get(client_ip, []) if now - t < LOGIN_ATTEMPT_WINDOW_SECONDS
+        ]
+        attempts.append(now)
+        _login_attempts[client_ip] = attempts
 
 
 def login_bloqueado(client_ip):
     now = time.monotonic()
-    attempts = [t for t in _login_attempts.get(client_ip, []) if now - t < LOGIN_ATTEMPT_WINDOW_SECONDS]
-    _login_attempts[client_ip] = attempts
-    return len(attempts) >= LOGIN_ATTEMPT_LIMIT
+    with _login_attempts_lock:
+        attempts = [
+            t for t in _login_attempts.get(client_ip, []) if now - t < LOGIN_ATTEMPT_WINDOW_SECONDS
+        ]
+        _login_attempts[client_ip] = attempts
+        return len(attempts) >= LOGIN_ATTEMPT_LIMIT
 
 
 def login_required(view):
@@ -461,6 +550,11 @@ app.add_template_filter(listar_condicao_codigos, "condicoes_codigos")
 @app.context_processor
 def inject_options():
     return {"opcoes_condicoes_saude": CONDICOES_SAUDE_OPCOES}
+
+
+@app.errorhandler(404)
+def pagina_nao_encontrada(_error):
+    return render_template("erro_404.html"), 404
 
 
 def get_house_or_404(casa_id):

@@ -1,106 +1,90 @@
-<form class="form-panel" method="post">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-section-title">
-        <i class="bi bi-person-vcard"></i>
-        Dados do paciente
-    </div>
-    <div class="row g-3">
-        <div class="col-md-8">
-            <label class="form-label" for="nome">Nome</label>
-            <input class="form-control" id="nome" name="nome" type="text" value="{{ paciente.nome if paciente else '' }}" required>
-        </div>
+{% set selecionadas = paciente.condicoes_saude|condicoes_codigos if paciente else [] %}
+<form method="post" class="rounded-xl border border-slate-200 bg-white max-w-3xl">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-        <div class="col-md-4">
-            <label class="form-label" for="cpf">CPF ou CNS</label>
-            <input class="form-control cpf-cns-mask" id="cpf" name="cpf" type="text" inputmode="numeric" maxlength="18" placeholder="CPF ou Cartão Nacional de Saúde" value="{{ paciente.cpf if paciente else '' }}">
-        </div>
-
-        <div class="col-md-4">
-            <label class="form-label" for="telefone">Telefone</label>
-            <input class="form-control phone-mask" id="telefone" name="telefone" type="text" inputmode="numeric" maxlength="15" placeholder="(00) 00000-0000" value="{{ paciente.telefone if paciente else '' }}">
-        </div>
-
-        <div class="col-md-4">
-            <label class="form-label" for="data_nascimento">Data de nascimento</label>
-            <input class="form-control" id="data_nascimento" name="data_nascimento" type="date" value="{{ paciente.data_nascimento if paciente else '' }}">
-        </div>
-
-        <div class="col-md-4">
-            <label class="form-label" for="sexo">Sexo</label>
-            <select class="form-select" id="sexo" name="sexo">
-                <option value="">Não informado</option>
-                <option value="Feminino" {% if paciente and paciente.sexo == 'Feminino' %}selected{% endif %}>Feminino</option>
-                <option value="Masculino" {% if paciente and paciente.sexo == 'Masculino' %}selected{% endif %}>Masculino</option>
-            </select>
-        </div>
-
-        <div class="col-12 mt-2">
-            <div class="form-section-title">
-                <i class="bi bi-people"></i>
-                Vínculos familiares
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <label class="form-label" for="nome_pai">Nome do pai</label>
-            <input class="form-control" id="nome_pai" name="nome_pai" type="text" value="{{ paciente.nome_pai if paciente else '' }}">
-        </div>
-
-        <div class="col-md-4">
-            <label class="form-label" for="nome_mae">Nome da mãe</label>
-            <input class="form-control" id="nome_mae" name="nome_mae" type="text" value="{{ paciente.nome_mae if paciente else '' }}">
-        </div>
-
-        {% set selecionadas = paciente.condicoes_saude|condicoes_codigos if paciente else [] %}
-        <div class="col-12 mt-2">
-            <div class="form-section-title">
-                <i class="bi bi-heart-pulse"></i>
-                Saúde e observações
-            </div>
-            <label class="form-label">Condições/Situações de saúde gerais</label>
-            <div class="dropdown health-dropdown">
-                <button class="btn btn-outline-secondary dropdown-toggle w-100 text-start" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-                    <span class="health-dropdown-label">Selecionar condições</span>
-                </button>
-                <div class="dropdown-menu w-100 p-3 health-dropdown-menu">
-                    <div class="row g-2">
-                        {% for opcao in opcoes_condicoes_saude %}
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input
-                                        class="form-check-input health-option"
-                                        type="checkbox"
-                                        name="condicoes_saude"
-                                        value="{{ opcao.codigo }}"
-                                        data-label="{{ opcao.label }}"
-                                        id="condicao_{{ loop.index }}"
-                                        {% if opcao.codigo in selecionadas %}checked{% endif %}
-                                    >
-                                    <label class="form-check-label" for="condicao_{{ loop.index }}">
-                                        {{ opcao.label }}
-                                    </label>
-                                </div>
-                            </div>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-12">
-            <label class="form-label" for="observacao">Observação</label>
-            <textarea class="form-control" id="observacao" name="observacao" rows="4">{{ paciente.observacao if paciente else '' }}</textarea>
-        </div>
+  <div class="px-6 pt-6">
+    <h2 class="text-sm font-bold text-slate-900">Dados do paciente</h2>
+  </div>
+  <div class="form-grid">
+    <div class="form-field md-span-2">
+      <label class="form-label" for="nome">Nome</label>
+      <input class="form-input" id="nome" name="nome" type="text" value="{{ paciente.nome if paciente else '' }}" required>
     </div>
 
-    <div class="d-flex flex-wrap gap-2 mt-4">
-        <button class="btn btn-primary" type="submit">
-            <i class="bi bi-check2-circle"></i>
-            Salvar paciente
-        </button>
-        <a class="btn btn-outline-secondary" href="{{ url_for('detalhes_casa', casa_id=casa.id) }}">
-            <i class="bi bi-x-lg"></i>
-            Cancelar
-        </a>
+    <div class="form-field">
+      <label class="form-label" for="cpf">CPF ou CNS</label>
+      <input class="form-input" id="cpf" name="cpf" type="text" data-mask="cpf-cns" inputmode="numeric" maxlength="18" placeholder="CPF ou Cartão Nacional de Saúde" value="{{ paciente.cpf if paciente else '' }}">
     </div>
+
+    <div class="form-field">
+      <label class="form-label" for="telefone">Telefone</label>
+      <input class="form-input" id="telefone" name="telefone" type="tel" inputmode="numeric" maxlength="15" placeholder="(00) 00000-0000" value="{{ paciente.telefone if paciente else '' }}">
+    </div>
+
+    <div class="form-field">
+      <label class="form-label" for="data_nascimento">Data de nascimento</label>
+      <input class="form-input" id="data_nascimento" name="data_nascimento" type="date" value="{{ paciente.data_nascimento if paciente else '' }}">
+    </div>
+
+    <div class="form-field">
+      <label class="form-label" for="sexo">Sexo</label>
+      <select class="form-input" id="sexo" name="sexo">
+        <option value="">Não informado</option>
+        <option value="Feminino" {% if paciente and paciente.sexo == 'Feminino' %}selected{% endif %}>Feminino</option>
+        <option value="Masculino" {% if paciente and paciente.sexo == 'Masculino' %}selected{% endif %}>Masculino</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="px-6 pt-2">
+    <h2 class="text-sm font-bold text-slate-900">Vínculos familiares</h2>
+  </div>
+  <div class="form-grid">
+    <div class="form-field">
+      <label class="form-label" for="nome_pai">Nome do pai</label>
+      <input class="form-input" id="nome_pai" name="nome_pai" type="text" value="{{ paciente.nome_pai if paciente else '' }}">
+    </div>
+
+    <div class="form-field">
+      <label class="form-label" for="nome_mae">Nome da mãe</label>
+      <input class="form-input" id="nome_mae" name="nome_mae" type="text" value="{{ paciente.nome_mae if paciente else '' }}">
+    </div>
+  </div>
+
+  <div class="px-6 pt-2">
+    <h2 class="text-sm font-bold text-slate-900">Saúde e observações</h2>
+  </div>
+  <div class="form-grid">
+    <div class="form-field md-span-2" x-data="healthConditions({{ selecionadas|length }})">
+      <span class="form-label">Condições/Situações de saúde gerais</span>
+      <button type="button" class="btn-secondary w-full justify-between" @click="toggle" :aria-expanded="open">
+        <span x-text="summary">Nenhuma condição selecionada</span>
+        <span class="text-xs font-bold text-blue-600" x-text="toggleLabel">Selecionar condições</span>
+      </button>
+      <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2" x-show="open" x-cloak @change="recount">
+        {% for opcao in opcoes_condicoes_saude %}
+          <label class="export-option">
+            <input
+              type="checkbox"
+              name="condicoes_saude"
+              value="{{ opcao.codigo }}"
+              id="condicao_{{ loop.index }}"
+              {% if opcao.codigo in selecionadas %}checked{% endif %}
+            >
+            <span>{{ opcao.label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="form-field md-span-2">
+      <label class="form-label" for="observacao">Observação</label>
+      <textarea class="form-input" id="observacao" name="observacao" rows="4">{{ paciente.observacao if paciente else '' }}</textarea>
+    </div>
+  </div>
+
+  <div class="form-actions border-t border-slate-100 px-6 py-4">
+    <button class="btn-primary" type="submit">Salvar paciente</button>
+    <a class="btn-secondary" href="{{ url_for('detalhes_casa', casa_id=casa.id) }}">Cancelar</a>
+  </div>
 </form>

@@ -1,176 +1,566 @@
-<!doctype html>
-<html lang="pt-br" data-bs-theme="dark" data-app-theme="dark">
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full{% if session.get('usuario_autenticado') %} app-locked{% endif %}">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Saúde Simples</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf-token" content="{{ csrf_token() }}" />
+  <title>{% block title %}Saúde Simples{% endblock %} - Saúde Simples</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+  <link rel="mask-icon" href="{{ url_for('static', filename='favicon.svg') }}" color="#1d4ed8" />
+  <script nonce="{{ csp_nonce }}">
+    (() => {
+      const root = document.documentElement;
+      const savedTheme = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+        root.classList.add('theme-dark');
+      }
+      if (localStorage.getItem('sidebarCollapsed') === 'true') {
+        root.classList.add('sidebar-collapsed');
+      }
+      // Acessibilidade: aplica tamanho de fonte e realce em negrito antes da
+      // primeira pintura, evitando qualquer "flash" ao carregar a pagina.
+      const scale = parseFloat(localStorage.getItem('a11yFontScale'));
+      const allowedScales = [0.95, 1, 1.12, 1.25];
+      if (allowedScales.some((value) => Math.abs(value - scale) < 0.001)) {
+        root.style.setProperty('--a11y-font-scale', scale);
+        root.classList.toggle('a11y-text-size', Math.abs(scale - 1) >= 0.001);
+      }
+      if (localStorage.getItem('a11yBold') === 'true') {
+        root.classList.add('a11y-bold');
+      }
+      if (localStorage.getItem('a11yBoostSmall') === 'true') {
+        root.classList.add('a11y-boost-small');
+      }
+    })();
+
+    // Guardião de versão: ao detectar que o usuário entrou numa versão nova,
+    // descarta o Cache Storage da versão anterior, deixando só a atual. Os
+    // estáticos já vêm versionados por ?v=, então o cache HTTP da versão
+    // passada é naturalmente abandonado; isto cobre caches do lado cliente.
+    (() => {
+      try {
+        const current = {{ asset_version | tojson }};
+        const stored = localStorage.getItem('appAssetVersion');
+        if (stored && stored !== current && window.caches && caches.keys) {
+          caches.keys().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
+        }
+        localStorage.setItem('appAssetVersion', current);
+      } catch (e) {
+        /* storage indisponivel: ignora */
+      }
+    })();
+  </script>
+  <style nonce="{{ csp_nonce }}">
+    html { background: #f8fafc; }
+    html.theme-dark { background: #0b1120; color-scheme: dark; }
+    html.theme-dark body { background: #0b1120; color: #dbe4f0; }
+    html.sidebar-collapsed .sidebar-shell { width: 5rem; }
+  </style>
+  <script nonce="{{ csp_nonce }}">
+    document.addEventListener('alpine:init', () => {
+      Alpine.store('ui', {
+        sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === 'true',
+        setSidebarCollapsed(value) {
+          this.sidebarCollapsed = value;
+          localStorage.setItem('sidebarCollapsed', value);
+          document.documentElement.classList.toggle('sidebar-collapsed', value);
+        },
+      });
+
+      // Acessibilidade — tamanho da fonte + realce em negrito, salvos por
+      // dispositivo (localStorage). Disponivel para todos os usuarios.
+      Alpine.store('a11y', {
+        open: false,
+        steps: [0.95, 1, 1.12, 1.25],
+        scale: parseFloat(localStorage.getItem('a11yFontScale')) || 1,
+        bold: localStorage.getItem('a11yBold') === 'true',
+        boostSmall: localStorage.getItem('a11yBoostSmall') === 'true',
+
+        init() {
+          // Garante que o estado salvo esteja normalizado e aplicado.
+          if (!this.steps.some((s) => Math.abs(s - this.scale) < 0.001)) {
+            this.scale = 1;
+          }
+          this.apply();
+        },
+
+        get percent() {
+          return Math.round(this.scale * 100);
+        },
+        get scaleLabel() {
+          const labels = { '0.95': 'Compacta', '1': 'Padrão', '1.12': 'Confortável', '1.25': 'Grande' };
+          return labels[String(this.scale)] || 'Padrão';
+        },
+        get isDefault() {
+          return Math.abs(this.scale - 1) < 0.001 && !this.bold && !this.boostSmall;
+        },
+
+        setScale(value) {
+          this.scale = value;
+          localStorage.setItem('a11yFontScale', String(value));
+          this.apply();
+        },
+        isScale(value) {
+          return Math.abs(this.scale - value) < 0.001;
+        },
+        toggleBold() {
+          this.bold = !this.bold;
+          localStorage.setItem('a11yBold', String(this.bold));
+          this.apply();
+        },
+        toggleBoostSmall() {
+          this.boostSmall = !this.boostSmall;
+          localStorage.setItem('a11yBoostSmall', String(this.boostSmall));
+          this.apply();
+        },
+        reset() {
+          this.bold = false;
+          this.boostSmall = false;
+          localStorage.setItem('a11yBold', 'false');
+          localStorage.setItem('a11yBoostSmall', 'false');
+          this.setScale(1);
+        },
+
+        apply() {
+          const root = document.documentElement;
+          root.style.setProperty('--a11y-font-scale', this.scale);
+          root.classList.toggle('a11y-text-size', Math.abs(this.scale - 1) >= 0.001);
+          root.classList.toggle('a11y-bold', this.bold);
+          root.classList.toggle('a11y-boost-small', this.boostSmall);
+        },
+      });
+    });
+  </script>
+  <script defer src="{{ url_for('static', filename='js/alpine-components.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='vendor/alpine.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
 </head>
-<body>
-    <nav class="navbar navbar-expand-lg">
-        <div class="container">
-            <a class="navbar-brand" href="{{ url_for('index') }}">
-                <i class="bi bi-shield-heart"></i>
-                Saúde Simples
-            </a>
-            <div class="navbar-actions ms-auto">
-                <button
-                    class="btn btn-icon btn-outline-secondary theme-toggle"
-                    type="button"
-                    title="Alternar tema"
-                    aria-label="Alternar tema"
-                >
-                    <i class="bi bi-moon-stars"></i>
-                </button>
-                <button
-                    class="btn btn-sm btn-outline-secondary"
-                    type="button"
-                    data-bs-toggle="modal"
-                    data-bs-target="#exportPdfModal"
-                    title="Exportar PDF"
-                >
-                    <i class="bi bi-download"></i>
-                    <span class="d-none d-md-inline ms-1">Exportar</span>
-                </button>
-                <div class="navbar-divider"></div>
-                <a
-                    class="btn btn-icon btn-outline-secondary"
-                    href="{{ url_for('alterar_senha') }}"
-                    title="Alterar senha"
-                    aria-label="Alterar senha"
-                >
-                    <i class="bi bi-key"></i>
-                </a>
-                <form method="post" action="{{ url_for('logout') }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button
-                        class="btn btn-icon btn-outline-secondary"
-                        type="submit"
-                        title="Sair"
-                        aria-label="Sair"
-                    >
-                        <i class="bi bi-box-arrow-right"></i>
-                    </button>
-                </form>
-            </div>
-        </div>
+<body class="h-full bg-slate-50 font-sans antialiased">
+
+{% if session.get('usuario_autenticado') %}
+{% set current_endpoint = request.endpoint or '' %}
+<div class="app-shell context-unit flex h-full overflow-hidden" x-data="appShell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar-shell hidden md:flex md:flex-col overflow-hidden bg-slate-900 text-white shrink-0 transition-all duration-200" :class="sidebarCollapsed ? 'w-20' : 'w-64'">
+    <!-- Logo -->
+    <div class="flex items-center border-b border-slate-700" :class="sidebarCollapsed ? 'flex-col justify-center gap-3 px-3 py-4' : 'gap-3 px-6 py-5'">
+      <div class="w-9 h-9 rounded-lg bg-blue-500 flex items-center justify-center shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+          <path fill-rule="evenodd" d="M11.484 2.17a.75.75 0 0 1 1.032 0 11.209 11.209 0 0 0 7.877 3.08.75.75 0 0 1 .722.515 12.74 12.74 0 0 1 .635 3.985c0 5.942-4.064 10.933-9.563 12.348a.749.749 0 0 1-.374 0C6.314 20.683 2.25 15.692 2.25 9.75c0-1.39.223-2.73.635-3.985a.75.75 0 0 1 .722-.516l.143.001c2.996 0 5.718-1.17 7.734-3.08ZM12 8.25a.75.75 0 0 1 .75.75v2.25H15a.75.75 0 0 1 0 1.5h-2.25V15a.75.75 0 0 1-1.5 0v-2.25H9a.75.75 0 0 1 0-1.5h2.25V9a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/>
+        </svg>
+      </div>
+      <div x-show="!sidebarCollapsed" x-cloak data-shell-brand>
+        <div class="text-sm font-semibold leading-tight">Saúde Simples</div>
+        <div class="mt-0.5 text-xs text-slate-400">Cadastro do ACS</div>
+      </div>
+      <button
+        type="button"
+        class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-800 hover:text-white"
+        :class="sidebarCollapsed ? 'ml-0' : 'ml-auto'"
+        :aria-label="sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'"
+        :title="sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'"
+        @click="sidebarCollapsed = !sidebarCollapsed"
+      >
+        <svg x-show="!sidebarCollapsed" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
+        </svg>
+        <svg x-show="sidebarCollapsed" x-cloak class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Nav -->
+    <nav class="flex-1 min-h-0 px-3 py-4 space-y-1 overflow-y-auto">
+      <a data-nav-link href="{{ url_for('index') }}"
+         class="flex items-center py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white {{ 'nav-active text-white' if current_endpoint == 'index' else '' }}"
+         :class="sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3'"
+         title="Painel">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        <span x-show="!sidebarCollapsed" x-cloak>Painel</span>
+      </a>
+
+      <a data-nav-link href="{{ url_for('cadastrar_casa') }}"
+         class="flex items-center py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white {{ 'nav-active text-white' if current_endpoint in ['cadastrar_casa', 'editar_casa'] else '' }}"
+         :class="sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3'"
+         title="Nova casa">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2m-2 0h-4m-6 0H3m2 0h4m0 0v-4a1 1 0 011-1h2a1 1 0 011 1v4m-4 0h4M9 7h1m4 0h1M9 11h1m4 0h1"/></svg>
+        <span x-show="!sidebarCollapsed" x-cloak>Nova casa</span>
+      </a>
+
+      <a data-nav-link href="{{ url_for('cadastrar_quadra') }}"
+         class="flex items-center py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white {{ 'nav-active text-white' if current_endpoint in ['cadastrar_quadra', 'editar_quadra'] else '' }}"
+         :class="sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3'"
+         title="Nova quadra">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+        <span x-show="!sidebarCollapsed" x-cloak>Nova quadra</span>
+      </a>
+
+      <button type="button" data-export-open
+         class="w-full flex items-center py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white"
+         :class="sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3'"
+         title="Exportar PDF">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 7H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V18a2 2 0 01-2 2z"/></svg>
+        <span x-show="!sidebarCollapsed" x-cloak>Exportar PDF</span>
+      </button>
+
+      <div class="mt-2 pt-3 border-t border-slate-800 space-y-1">
+        <p class="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500" x-show="!sidebarCollapsed" x-cloak>Conta</p>
+
+        <a data-nav-link href="{{ url_for('alterar_senha') }}"
+           class="flex items-center py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white {{ 'nav-active text-white' if current_endpoint == 'alterar_senha' else '' }}"
+           :class="sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3'"
+           title="Alterar senha">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+          <span x-show="!sidebarCollapsed" x-cloak>Alterar senha</span>
+        </a>
+      </div>
     </nav>
 
-    <main class="container pb-5">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="pt-2 pb-2">
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                            {{ message }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
-                        </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
+    <!-- Footer -->
+    <div class="px-3 py-4 border-t border-slate-700">
+      <div class="flex" :class="sidebarCollapsed ? 'flex-col items-center gap-2' : 'items-center justify-between gap-2 px-3'">
+        <form method="post" action="{{ url_for('logout') }}" data-no-smooth class="flex flex-1" :class="sidebarCollapsed ? 'justify-center' : ''">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit"
+             class="flex flex-1 items-center py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-slate-800"
+             :class="sidebarCollapsed ? 'justify-center px-0' : 'gap-2'"
+             title="Sair">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+            <span x-show="!sidebarCollapsed" x-cloak>Sair</span>
+          </button>
+        </form>
+        <div class="flex items-center gap-2" :class="sidebarCollapsed ? 'flex-col' : ''">
+          <button
+            type="button"
+            class="theme-toggle shrink-0"
+            aria-label="Ajustes de acessibilidade: tamanho da fonte e realce em negrito"
+            title="Acessibilidade: fonte e negrito"
+            @click="$store.a11y.open = true"
+          >
+            <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2.2a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8Zm7.7 5.1a1 1 0 0 1-.72 1.2l-4.48 1.2V21a1 1 0 1 1-2 0v-5.2h-1v5.2a1 1 0 1 1-2 0V9.7L5.02 8.5A1 1 0 1 1 5.53 6.6l4.5 1.2a7.9 7.9 0 0 0 3.94 0l4.5-1.2a1 1 0 0 1 1.23.7Z"/>
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="theme-toggle shrink-0"
+            aria-label="Alternar modo claro e escuro"
+            title="Alternar modo claro e escuro"
+            data-theme-toggle
+          >
+            <svg class="theme-icon theme-icon-sun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.36 6.36-.7-.7M6.34 6.34l-.7-.7m12.02 0-.7.7M6.34 17.66l-.7.7M12 8a4 4 0 100 8 4 4 0 000-8z"/>
+            </svg>
+            <svg class="theme-icon theme-icon-moon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.35 15.35A9 9 0 118.65 3.65 7 7 0 0020.35 15.35z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </aside>
 
-        {% block content %}{% endblock %}
+  <!-- Mobile header -->
+  <div class="app-topbar md:hidden fixed top-0 left-0 right-0 z-40 bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
+    <span class="font-semibold text-sm">Saúde Simples</span>
+    <button @click="open = !open" class="p-1 rounded" aria-label="Abrir menu">
+      <svg x-show="!open" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      <svg x-show="open" x-cloak class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  <!-- Mobile menu overlay -->
+  <div x-show="open" x-cloak x-transition class="app-mobile-menu md:hidden fixed inset-0 z-30 bg-slate-900 text-white pt-14 px-4 pb-4 overflow-y-auto">
+    <nav class="space-y-1">
+      <a href="{{ url_for('index') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Painel</a>
+      <a href="{{ url_for('cadastrar_casa') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Nova casa</a>
+      <a href="{{ url_for('cadastrar_quadra') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Nova quadra</a>
+      <button type="button" data-export-open class="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Exportar PDF</button>
+      <a href="{{ url_for('alterar_senha') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Alterar senha</a>
+      <form method="post" action="{{ url_for('logout') }}" data-no-smooth>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-red-400">Sair</button>
+      </form>
+      <div class="flex items-center gap-2 pt-2">
+        <button type="button" class="theme-toggle" aria-label="Ajustes de acessibilidade: tamanho da fonte e realce em negrito" title="Acessibilidade: fonte e negrito" @click="$store.a11y.open = true">
+          <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2.2a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8Zm7.7 5.1a1 1 0 0 1-.72 1.2l-4.48 1.2V21a1 1 0 1 1-2 0v-5.2h-1v5.2a1 1 0 1 1-2 0V9.7L5.02 8.5A1 1 0 1 1 5.53 6.6l4.5 1.2a7.9 7.9 0 0 0 3.94 0l4.5-1.2a1 1 0 0 1 1.23.7Z"/>
+          </svg>
+        </button>
+        <button type="button" class="theme-toggle" data-theme-toggle aria-label="Alternar modo claro e escuro">
+          <svg class="theme-icon theme-icon-sun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.36 6.36-.7-.7M6.34 6.34l-.7-.7m12.02 0-.7.7M6.34 17.66l-.7.7M12 8a4 4 0 100 8 4 4 0 000-8z"/>
+          </svg>
+          <svg class="theme-icon theme-icon-moon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.35 15.35A9 9 0 118.65 3.65 7 7 0 0020.35 15.35z"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+  </div>
+
+  <!-- Main content -->
+  <div class="flex-1 flex min-h-0 min-w-0 flex-col overflow-y-auto">
+    <main id="app-main" class="flex-1 px-4 md:px-8 pt-16 md:pt-8 pb-8">
+
+      <!-- Flash messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="mb-6 space-y-2">
+            {% for cat, msg in messages %}
+              {% set color = {'success':'green','danger':'red','warning':'amber','info':'blue'}.get(cat,'slate') %}
+              <div class="flex items-start gap-3 px-4 py-3 rounded-lg bg-{{ color }}-50 border border-{{ color }}-200 text-{{ color }}-800 text-sm"
+                   x-data="flashMessage" x-init="scheduleRemoval">
+                <span class="flex-1">{{ msg }}</span>
+                <button @click="remove" class="text-{{ color }}-500 hover:text-{{ color }}-700 shrink-0" aria-label="Fechar aviso">x</button>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
     </main>
+  </div>
 
-    <!-- Confirm delete modal -->
-    <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteTitle" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered" style="max-width: 420px;">
-            <div class="modal-content">
-                <div class="modal-body" style="padding: 28px 24px 20px;">
-                    <div class="d-flex gap-3 align-items-start">
-                        <div class="confirm-icon flex-shrink-0">
-                            <i class="bi bi-exclamation-triangle"></i>
-                        </div>
-                        <div>
-                            <h2 class="h5 mb-1" id="confirmDeleteTitle">Confirmar exclusão</h2>
-                            <p class="text-muted mb-0" style="font-size: 0.875rem;" id="confirmDeleteMessage">Deseja continuar?</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-danger" id="confirmDeleteButton">
-                        <i class="bi bi-trash"></i>
-                        Excluir
-                    </button>
-                </div>
-            </div>
+  <!-- Painel de Acessibilidade -->
+  <div
+    class="a11y-overlay"
+    x-show="$store.a11y.open"
+    x-cloak
+    x-transition.opacity.duration.150ms
+    @click.self="$store.a11y.open = false"
+    @keydown.escape.window="$store.a11y.open = false"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="a11y-title"
+  >
+    <div class="a11y-panel" x-show="$store.a11y.open" x-transition.scale.origin.bottom.95>
+      <header class="a11y-panel-head">
+        <div>
+          <p class="a11y-panel-kicker">Acessibilidade</p>
+          <h2 id="a11y-title" class="a11y-panel-title">Leitura e conforto</h2>
         </div>
-    </div>
+        <button type="button" class="a11y-close" @click="$store.a11y.open = false" aria-label="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </header>
 
-    <!-- Export PDF modal -->
-    <div class="modal fade" id="exportPdfModal" tabindex="-1" aria-labelledby="exportPdfTitle" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content">
-                <form method="get" action="{{ url_for('exportar_pdf') }}" id="exportFilteredPdfForm" data-preview-url="{{ url_for('preview_exportar_pdf') }}">
-                    <input type="hidden" name="filtrar" value="1">
-                    <div class="modal-header">
-                        <div>
-                            <h2 class="h5 mb-1" id="exportPdfTitle">Exportar relatório em PDF</h2>
-                            <p class="text-muted mb-0" style="font-size: 0.84rem;">Exporte tudo ou filtre por comorbidades específicas.</p>
-                        </div>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="export-preview">
-                            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-1">
-                                <div>
-                                    <strong class="export-preview-title" style="font-size: 0.875rem;">Prévia do relatório completo</strong>
-                                    <span class="export-preview-description text-muted d-block" style="font-size: 0.8rem;">Marque comorbidades para ver o recorte filtrado.</span>
-                                </div>
-                                <span class="export-preview-mode export-preview-mode-general">
-                                    <i class="bi bi-layers"></i>
-                                    Geral
-                                </span>
-                            </div>
-                            <div class="export-preview-stats">
-                                <div><span>Casas</span><strong data-preview-stat="total_casas">0</strong></div>
-                                <div><span>Pacientes</span><strong data-preview-stat="total_pacientes">0</strong></div>
-                                <div><span>Vazias</span><strong data-preview-stat="casas_vazias">0</strong></div>
-                                <div><span>Crianças</span><strong data-preview-stat="criancas">0</strong></div>
-                                <div><span>Idosos</span><strong data-preview-stat="idosos">0</strong></div>
-                                <div><span>Gestantes</span><strong data-preview-stat="gestantes">0</strong></div>
-                                <div><span>Homens</span><strong data-preview-stat="homens">0</strong></div>
-                                <div><span>Mulheres</span><strong data-preview-stat="mulheres">0</strong></div>
-                            </div>
-                            <div class="export-preview-conditions">Nenhuma comorbidade selecionada.</div>
-                        </div>
+      <div class="a11y-panel-body">
+        <!-- Tamanho da fonte -->
+        <section class="a11y-block a11y-font-block">
+          <div class="a11y-block-copy">
+            <p class="a11y-block-title">Tamanho da fonte</p>
+            <p class="a11y-block-sub">Ajusta apenas a tipografia, mantendo menus, cartões e espaçamentos estáveis.</p>
+          </div>
+          <div class="a11y-size-options" role="group" aria-label="Tamanho do texto">
+            <button
+              type="button"
+              class="a11y-size-option a11y-size-compact"
+              :class="{ 'is-active': $store.a11y.isScale(0.95) }"
+              :aria-pressed="$store.a11y.isScale(0.95)"
+              @click="$store.a11y.setScale(0.95)"
+            ><strong>Aa</strong><span>Compacta</span></button>
+            <button
+              type="button"
+              class="a11y-size-option"
+              :class="{ 'is-active': $store.a11y.isScale(1) }"
+              :aria-pressed="$store.a11y.isScale(1)"
+              @click="$store.a11y.setScale(1)"
+            ><strong>Aa</strong><span>Padrão</span></button>
+            <button
+              type="button"
+              class="a11y-size-option a11y-size-comfort"
+              :class="{ 'is-active': $store.a11y.isScale(1.12) }"
+              :aria-pressed="$store.a11y.isScale(1.12)"
+              @click="$store.a11y.setScale(1.12)"
+            ><strong>Aa</strong><span>Confortável</span></button>
+            <button
+              type="button"
+              class="a11y-size-option a11y-size-large"
+              :class="{ 'is-active': $store.a11y.isScale(1.25) }"
+              :aria-pressed="$store.a11y.isScale(1.25)"
+              @click="$store.a11y.setScale(1.25)"
+            ><strong>Aa</strong><span>Grande</span></button>
+          </div>
+          <p class="a11y-size-status" aria-live="polite"><span x-text="$store.a11y.scaleLabel">Padrão</span> · <strong x-text="$store.a11y.percent + '%'">100%</strong></p>
+        </section>
 
-                        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
-                            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('exportar_pdf') }}" title="Exportar relatório completo sem filtros">
-                                <i class="bi bi-file-earmark-pdf"></i>
-                                Exportar tudo
-                            </a>
-                            <button class="btn btn-outline-secondary btn-sm export-select-all" type="button">Marcar todas</button>
-                            <button class="btn btn-outline-secondary btn-sm export-clear" type="button">Limpar</button>
-                            <span class="export-selected-count">0 selecionada(s)</span>
-                        </div>
+        <!-- Realce em negrito -->
+        <section class="a11y-block">
+          <div class="a11y-block-copy">
+            <p class="a11y-block-title">Realce em negrito</p>
+            <p class="a11y-block-sub">Deixa as letras mais fortes e fáceis de ler.</p>
+          </div>
+          <button
+            type="button"
+            class="switch shrink-0"
+            :class="{ 'is-on': $store.a11y.bold }"
+            @click="$store.a11y.toggleBold()"
+            role="switch"
+            :aria-checked="$store.a11y.bold ? 'true' : 'false'"
+            aria-label="Ativar realce em negrito"
+          ></button>
+        </section>
 
-                        <div class="export-options-grid">
-                            {% for opcao in opcoes_condicoes_saude %}
-                                <label class="export-option">
-                                    <input class="form-check-input export-condition" type="checkbox" name="condicoes" value="{{ opcao.codigo }}">
-                                    <span>{{ opcao.label }}</span>
-                                </label>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-primary export-selected-submit" disabled>
-                            <i class="bi bi-download"></i>
-                            Exportar selecionadas
-                        </button>
-                    </div>
-                </form>
-            </div>
+        <!-- Realce de textos pequenos -->
+        <section class="a11y-block">
+          <div class="a11y-block-copy">
+            <p class="a11y-block-title">Textos pequenos</p>
+            <p class="a11y-block-sub">Aumenta e destaca os textos menores (datas, endereços, nomes de apoio), com mais contraste no tema claro.</p>
+          </div>
+          <button
+            type="button"
+            class="switch shrink-0"
+            :class="{ 'is-on': $store.a11y.boostSmall }"
+            @click="$store.a11y.toggleBoostSmall()"
+            role="switch"
+            :aria-checked="$store.a11y.boostSmall ? 'true' : 'false'"
+            aria-label="Aumentar e destacar textos pequenos"
+          ></button>
+        </section>
+
+        <!-- Prévia -->
+        <div class="a11y-preview" aria-hidden="true">
+          <span class="a11y-preview-label">Prévia</span>
+          <p>O rápido cuidado ao paciente <strong>salva vidas</strong>.</p>
         </div>
-    </div>
+      </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='app.js') }}?v=7"></script>
+      <footer class="a11y-panel-foot">
+        <button
+          type="button"
+          class="a11y-reset"
+          @click="$store.a11y.reset()"
+          :disabled="$store.a11y.isDefault"
+        >Restaurar padrão</button>
+        <button type="button" class="btn-primary" @click="$store.a11y.open = false">Concluir</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Exportar PDF -->
+  <div id="export-dialog" class="export-dialog" hidden aria-hidden="true">
+    <div class="export-dialog-backdrop" data-export-close></div>
+    <section class="export-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="export-dialog-title">
+      <form method="get" action="{{ url_for('exportar_pdf') }}" id="exportFilteredPdfForm" data-no-smooth data-preview-url="{{ url_for('preview_exportar_pdf') }}">
+        <input type="hidden" name="filtrar" value="1">
+        <header class="export-dialog-head">
+          <div>
+            <p class="export-dialog-kicker">Relatório</p>
+            <h2 id="export-dialog-title" class="export-dialog-title">Exportar em PDF</h2>
+            <p class="export-dialog-sub">Exporte tudo ou filtre por comorbidades específicas.</p>
+          </div>
+          <button type="button" class="a11y-close" data-export-close aria-label="Fechar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </header>
+
+        <div class="export-dialog-body">
+          <div class="export-preview">
+            <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
+              <div class="min-w-0">
+                <strong class="export-preview-title text-sm">Prévia do relatório completo</strong>
+                <span class="export-preview-description block text-xs text-slate-500">Marque comorbidades para ver o recorte filtrado.</span>
+              </div>
+              <span class="export-preview-mode export-preview-mode-general">Geral</span>
+            </div>
+            <div class="export-preview-stats">
+              <div><span>Casas</span><strong data-preview-stat="total_casas">0</strong></div>
+              <div><span>Pacientes</span><strong data-preview-stat="total_pacientes">0</strong></div>
+              <div><span>Vazias</span><strong data-preview-stat="casas_vazias">0</strong></div>
+              <div><span>Crianças</span><strong data-preview-stat="criancas">0</strong></div>
+              <div><span>Idosos</span><strong data-preview-stat="idosos">0</strong></div>
+              <div><span>Gestantes</span><strong data-preview-stat="gestantes">0</strong></div>
+              <div><span>Homens</span><strong data-preview-stat="homens">0</strong></div>
+              <div><span>Mulheres</span><strong data-preview-stat="mulheres">0</strong></div>
+            </div>
+            <div class="export-preview-conditions">Nenhuma comorbidade selecionada.</div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 mb-3">
+            <a class="btn-secondary export-inline-btn" href="{{ url_for('exportar_pdf') }}" data-no-smooth title="Exportar relatório completo sem filtros">Exportar tudo</a>
+            <button class="btn-secondary export-inline-btn export-select-all" type="button">Marcar todas</button>
+            <button class="btn-secondary export-inline-btn export-clear" type="button">Limpar</button>
+            <span class="export-selected-count text-xs text-slate-500 ml-auto">0 selecionada(s)</span>
+          </div>
+
+          <div class="export-options-grid">
+            {% for opcao in opcoes_condicoes_saude %}
+              <label class="export-option">
+                <input class="export-condition" type="checkbox" name="condicoes" value="{{ opcao.codigo }}">
+                <span>{{ opcao.label }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <footer class="export-dialog-foot">
+          <button type="button" class="btn-secondary" data-export-close>Cancelar</button>
+          <button type="submit" class="btn-primary export-selected-submit" disabled>Exportar selecionadas</button>
+        </footer>
+      </form>
+    </section>
+  </div>
+
+  <div id="confirm-dialog" class="confirm-dialog" hidden aria-hidden="true">
+    <div class="confirm-dialog-backdrop" data-confirm-cancel></div>
+    <section class="confirm-dialog-panel" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-message">
+      <div class="confirm-dialog-body">
+        <span class="confirm-dialog-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 9v4m0 4h.01M10.3 3.9 2.6 17.2A1.9 1.9 0 0 0 4.25 20h15.5a1.9 1.9 0 0 0 1.65-2.8L13.7 3.9a1.96 1.96 0 0 0-3.4 0Z"/>
+          </svg>
+        </span>
+        <div class="confirm-dialog-copy">
+          <p class="confirm-dialog-kicker">Atenção</p>
+          <h2 id="confirm-dialog-title">Confirmar ação?</h2>
+          <p id="confirm-dialog-message"></p>
+        </div>
+      </div>
+      <div class="confirm-dialog-actions">
+        <button type="button" class="socket-button confirm-dialog-cancel" data-confirm-cancel>Cancelar</button>
+        <button type="button" class="socket-button socket-button-danger confirm-dialog-submit" data-confirm-submit>Confirmar</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+{% else %}
+  {% block unauthenticated %}{% endblock %}
+{% endif %}
+
+<script nonce="{{ csp_nonce }}">
+  function updateThemeToggleLabel() {
+    const isDark = document.documentElement.classList.contains('theme-dark');
+    const label = isDark ? 'Alternar para modo claro' : 'Alternar para modo escuro';
+    document.querySelectorAll('.theme-toggle').forEach((button) => {
+      if (!button.hasAttribute('data-theme-toggle')) return;
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+    });
+  }
+
+  function toggleTheme() {
+    const root = document.documentElement;
+    const isDark = root.classList.toggle('theme-dark');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    updateThemeToggleLabel();
+  }
+
+  updateThemeToggleLabel();
+</script>
+<script src="{{ url_for('static', filename='js/masks.js') }}"></script>
+<script src="{{ url_for('static', filename='js/csp-events.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/smooth-navigation.js') }}"></script>
 </body>
 </html>

@@ -1,36 +1,31 @@
 {% extends "base.html" %}
+{% block title %}Cadastrar quadra{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <a class="page-back" href="{{ url_for('index') }}">
-            <i class="bi bi-arrow-left"></i>
-            Casas
-        </a>
-        <h1 class="page-header-title">Cadastrar quadra</h1>
-    </div>
+<div class="mb-6">
+  <a href="{{ url_for('index') }}" class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline mb-2">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    Casas
+  </a>
+  <h1 class="text-2xl font-bold tracking-tight text-slate-900">Cadastrar quadra</h1>
 </div>
 
-<form class="form-panel" method="post" style="max-width: 420px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-section-title">
-        <i class="bi bi-grid-3x3-gap"></i>
-        Dados da quadra
-    </div>
-    <div class="mb-4">
-        <label class="form-label" for="numero_quadra">Número da quadra</label>
-        <input class="form-control" id="numero_quadra" name="numero_quadra" type="number" min="1" value="{{ proximo_numero }}" required>
-    </div>
+<form method="post" class="rounded-xl border border-slate-200 bg-white max-w-md">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <div class="d-flex flex-wrap gap-2">
-        <button class="btn btn-primary" type="submit">
-            <i class="bi bi-check2-circle"></i>
-            Salvar quadra
-        </button>
-        <a class="btn btn-outline-secondary" href="{{ url_for('index') }}">
-            <i class="bi bi-x-lg"></i>
-            Cancelar
-        </a>
+  <div class="px-6 pt-6">
+    <h2 class="text-sm font-bold text-slate-900">Dados da quadra</h2>
+  </div>
+  <div class="form-grid">
+    <div class="form-field md-span-2">
+      <label class="form-label" for="numero_quadra">Número da quadra</label>
+      <input class="form-input" id="numero_quadra" name="numero_quadra" type="number" min="1" value="{{ proximo_numero }}" required>
     </div>
+  </div>
+
+  <div class="form-actions border-t border-slate-100 px-6 py-4">
+    <button class="btn-primary" type="submit">Salvar quadra</button>
+    <a class="btn-secondary" href="{{ url_for('index') }}">Cancelar</a>
+  </div>
 </form>
 {% endblock %}

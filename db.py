@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import sqlite3
 from datetime import datetime
 
@@ -7,16 +8,42 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("saude_simples")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE = os.path.join(BASE_DIR, "database.db")
+INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
+DATABASE = os.path.join(INSTANCE_DIR, "database.db")
 BACKUP_DIR = os.path.join(BASE_DIR, "backups")
 BACKUP_RETENTION = 50
 MIN_PASSWORD_LENGTH = 10
 
+# O banco morava na raiz do projeto até a v2. Instalações existentes são
+# migradas automaticamente no primeiro boot — dado nunca se perde por upgrade.
+_LEGACY_DATABASE = os.path.join(BASE_DIR, "database.db")
+
+
+def _migrar_banco_legado():
+    if os.path.exists(DATABASE) or not os.path.exists(_LEGACY_DATABASE):
+        return
+
+    os.makedirs(os.path.dirname(DATABASE), exist_ok=True)
+    shutil.move(_LEGACY_DATABASE, DATABASE)
+    # Journals do WAL acompanham o banco; sem eles, transações não consolidadas
+    # da última sessão seriam perdidas.
+    for sufixo in ("-wal", "-shm"):
+        legado = _LEGACY_DATABASE + sufixo
+        if os.path.exists(legado):
+            shutil.move(legado, DATABASE + sufixo)
+    logger.info("Banco de dados migrado para %s", DATABASE)
+
 
 def get_db_connection():
+    os.makedirs(os.path.dirname(DATABASE), exist_ok=True)
+    _migrar_banco_legado()
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # WAL: leituras não bloqueiam escritas — o servidor (waitress) é multi-thread.
+    # busy_timeout: escrita concorrente espera em vez de falhar com "database is locked".
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 
@@ -111,6 +138,10 @@ def init_db():
         )
         """
     )
+    # SQLite não indexa FKs automaticamente — sem estes índices, os JOINs do
+    # painel e o ON DELETE CASCADE viram full scans conforme a base cresce.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_casas_quadra_id ON casas(quadra_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pacientes_casa_id ON pacientes(casa_id)")
     conn.commit()
     conn.close()
 
