@@ -2,6 +2,16 @@
 {% block title %}Pacientes{% endblock %}
 
 {% block content %}
+{# URL de uma página preservando busca/situação/quadra e o tamanho escolhido.
+   Padrões (página 1, tamanho padrão) ficam fora da URL — links limpos. #}
+{% macro url_pagina(n) -%}
+  {{- url_for('listar_pacientes',
+              busca=busca or None,
+              status=status_filtro or None,
+              quadra=quadra_filtro or None,
+              por_pagina=por_pagina if por_pagina != por_pagina_padrao else None,
+              pagina=n if n != 1 else None) -}}
+{%- endmacro %}
 <!-- Cabeçalho -->
 <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-8">
   <div>
@@ -58,6 +68,7 @@
     <p class="text-xs text-slate-500">Combine busca por nome/CPF/CNS, situação cadastral e quadra.</p>
   </div>
   <form method="get" action="{{ url_for('listar_pacientes') }}" role="search" class="flex flex-col md:flex-row gap-2">
+    {% if por_pagina != por_pagina_padrao %}<input type="hidden" name="por_pagina" value="{{ por_pagina }}">{% endif %}
     <input
       class="form-input flex-1"
       id="busca"
@@ -97,9 +108,9 @@
       <div>
         <h2 class="text-sm font-bold text-slate-900">Lista de pacientes</h2>
         {% if filtro_ativo %}
-          <p class="text-xs text-blue-700 font-semibold">{{ pacientes|length }} de {{ total_geral }} — filtro ativo</p>
+          <p class="text-xs text-blue-700 font-semibold">{{ total_filtrado }} de {{ total_geral }} — filtro ativo</p>
         {% else %}
-          <p class="text-xs text-slate-500">{{ pacientes|length }} cadastro(s)</p>
+          <p class="text-xs text-slate-500">{{ total_filtrado }} cadastro(s)</p>
         {% endif %}
       </div>
     </div>
@@ -179,6 +190,61 @@
           {% endfor %}
         </tbody>
       </table>
+    </div>
+
+    <!-- Paginação -->
+    <div class="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex flex-wrap items-center gap-3">
+        <p class="text-xs text-slate-500">
+          Mostrando <strong class="text-slate-700">{{ inicio_exibicao }}–{{ fim_exibicao }}</strong>
+          de <strong class="text-slate-700">{{ total_filtrado }}</strong>
+        </p>
+        <form method="get" action="{{ url_for('listar_pacientes') }}" class="flex items-center gap-2">
+          {% if busca %}<input type="hidden" name="busca" value="{{ busca }}">{% endif %}
+          {% if status_filtro %}<input type="hidden" name="status" value="{{ status_filtro }}">{% endif %}
+          {% if quadra_filtro %}<input type="hidden" name="quadra" value="{{ quadra_filtro }}">{% endif %}
+          <label class="text-xs text-slate-500" for="por_pagina">Por página</label>
+          <select class="pagination-size" id="por_pagina" name="por_pagina" data-submit-on-change>
+            {% for opcao in opcoes_por_pagina %}
+              <option value="{{ opcao }}" {% if por_pagina == opcao %}selected{% endif %}>{{ opcao }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+
+      {% if total_paginas > 1 %}
+        <nav class="pagination" aria-label="Paginação da lista de pacientes">
+          {% if pagina > 1 %}
+            <a class="pagination-btn" href="{{ url_pagina(pagina - 1) }}" aria-label="Página anterior">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </a>
+          {% else %}
+            <span class="pagination-btn is-disabled" aria-hidden="true">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </span>
+          {% endif %}
+
+          {% for numero in paginas_visiveis %}
+            {% if numero is none %}
+              <span class="pagination-ellipsis" aria-hidden="true">…</span>
+            {% elif numero == pagina %}
+              <span class="pagination-btn is-current" aria-current="page">{{ numero }}</span>
+            {% else %}
+              <a class="pagination-btn" href="{{ url_pagina(numero) }}" aria-label="Página {{ numero }}">{{ numero }}</a>
+            {% endif %}
+          {% endfor %}
+
+          {% if pagina < total_paginas %}
+            <a class="pagination-btn" href="{{ url_pagina(pagina + 1) }}" aria-label="Próxima página">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </a>
+          {% else %}
+            <span class="pagination-btn is-disabled" aria-hidden="true">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </span>
+          {% endif %}
+        </nav>
+      {% endif %}
     </div>
   </div>
 {% elif filtro_ativo %}

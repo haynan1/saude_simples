@@ -1436,6 +1436,31 @@ def excluir_paciente(paciente_id):
     return redirect_apos_acao_no_paciente(casa_id)
 
 
+# Paginação da lista de pacientes: tamanhos permitidos e padrão.
+POR_PAGINA_OPCOES = (25, 50, 100, 200)
+POR_PAGINA_PADRAO = 50
+
+
+def _janela_paginacao(pagina, total_paginas, vizinhos=1):
+    """Números de página exibidos: primeira, última e a vizinhança da atual,
+    com None marcando as elipses. Até 7 páginas, mostra todas."""
+    if total_paginas <= 7:
+        return list(range(1, total_paginas + 1))
+
+    visiveis = {1, total_paginas}
+    visiveis.update(
+        p for p in range(pagina - vizinhos, pagina + vizinhos + 1) if 1 <= p <= total_paginas
+    )
+    janela = []
+    anterior = None
+    for numero in sorted(visiveis):
+        if anterior is not None and numero - anterior > 1:
+            janela.append(None)
+        janela.append(numero)
+        anterior = numero
+    return janela
+
+
 @app.route("/pacientes")
 @login_required
 def listar_pacientes():
@@ -1476,10 +1501,28 @@ def listar_pacientes():
     if busca:
         filtrados = [p for p in filtrados if paciente_corresponde_busca(p, busca)]
 
+    # Paginação server-side, aplicada DEPOIS dos filtros. Valores fora da
+    # whitelist/intervalo caem no padrão — nunca 500 por query manipulada.
+    por_pagina_raw = request.args.get("por_pagina", "")
+    por_pagina = (
+        int(por_pagina_raw)
+        if por_pagina_raw.isdigit() and int(por_pagina_raw) in POR_PAGINA_OPCOES
+        else POR_PAGINA_PADRAO
+    )
+    pagina_raw = request.args.get("pagina", "")
+    pagina = int(pagina_raw) if pagina_raw.isdigit() and int(pagina_raw) >= 1 else 1
+
+    total_filtrado = len(filtrados)
+    total_paginas = max(1, -(-total_filtrado // por_pagina))
+    pagina = min(pagina, total_paginas)
+    inicio = (pagina - 1) * por_pagina
+    pagina_de_pacientes = filtrados[inicio:inicio + por_pagina]
+
     return render_template(
         "pacientes.html",
-        pacientes=filtrados,
+        pacientes=pagina_de_pacientes,
         total_geral=total_geral,
+        total_filtrado=total_filtrado,
         contagem_status=contagem_status,
         quadras=quadras,
         casas_destino=get_casas_para_transferencia(),
@@ -1487,6 +1530,14 @@ def listar_pacientes():
         status_filtro=status_filtro,
         quadra_filtro=quadra_filtro,
         filtro_ativo=bool(busca or status_filtro or quadra_filtro),
+        pagina=pagina,
+        total_paginas=total_paginas,
+        por_pagina=por_pagina,
+        por_pagina_padrao=POR_PAGINA_PADRAO,
+        opcoes_por_pagina=POR_PAGINA_OPCOES,
+        paginas_visiveis=_janela_paginacao(pagina, total_paginas),
+        inicio_exibicao=inicio + 1 if pagina_de_pacientes else 0,
+        fim_exibicao=inicio + len(pagina_de_pacientes),
     )
 
 

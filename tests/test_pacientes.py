@@ -101,6 +101,76 @@ def test_reativar_paciente(logged_client):
 
 
 # ---------------------------------------------------------------------------
+# Paginação
+# ---------------------------------------------------------------------------
+def _semear_muitos_pacientes(total):
+    """Inserção direta: rápida e com ordem alfabética previsível (P000…)."""
+    conn = db.get_db_connection()
+    conn.execute("INSERT INTO casas (numero_casa, endereco) VALUES (1, 'Rua A, 1')")
+    for i in range(total):
+        conn.execute(
+            "INSERT INTO pacientes (casa_id, nome) VALUES (1, ?)", (f"P{i:03d} Da Silva",)
+        )
+    conn.commit()
+    conn.close()
+
+
+def test_paginacao_padrao_de_50(logged_client):
+    _semear_muitos_pacientes(60)
+    body = logged_client.get("/pacientes").get_data(as_text=True)
+    assert "Mostrando <strong class=\"text-slate-700\">1–50</strong>" in body
+    assert "P049 Da Silva" in body
+    assert "P050 Da Silva" not in body  # 51º fica para a página 2
+
+    body2 = logged_client.get("/pacientes?pagina=2").get_data(as_text=True)
+    assert "51–60" in body2
+    assert "P050 Da Silva" in body2
+    assert "P049 Da Silva" not in body2
+
+
+def test_paginacao_tamanho_selecionavel(logged_client):
+    _semear_muitos_pacientes(60)
+    body = logged_client.get("/pacientes?por_pagina=25").get_data(as_text=True)
+    assert "1–25" in body
+    assert "P024 Da Silva" in body
+    assert "P025 Da Silva" not in body
+
+    body3 = logged_client.get("/pacientes?por_pagina=25&pagina=3").get_data(as_text=True)
+    assert "51–60" in body3
+
+
+def test_paginacao_valores_invalidos_caem_no_padrao(logged_client):
+    _semear_muitos_pacientes(60)
+    # Tamanho fora da whitelist → 50; página não numérica → 1.
+    body = logged_client.get("/pacientes?por_pagina=999&pagina=abc").get_data(as_text=True)
+    assert "1–50" in body
+    # Página além do fim → grampeada na última, nunca 500 nem lista vazia.
+    body = logged_client.get("/pacientes?pagina=99").get_data(as_text=True)
+    assert "51–60" in body
+
+
+def test_janela_de_paginacao_com_elipses():
+    import app as app_module
+
+    janela = app_module._janela_paginacao
+    assert janela(3, 7) == [1, 2, 3, 4, 5, 6, 7]  # até 7: todas
+    assert janela(5, 20) == [1, None, 4, 5, 6, None, 20]
+    assert janela(1, 20) == [1, 2, None, 20]
+    assert janela(20, 20) == [1, None, 19, 20]
+    assert janela(2, 20) == [1, 2, 3, None, 20]
+
+
+def test_paginacao_respeita_filtros(logged_client):
+    _semear_muitos_pacientes(60)
+    logged_client.post("/paciente/1/status", data={"status": "mudou_se"})  # P000
+    logged_client.get("/pacientes")  # consome o flash do POST (contém o nome)
+    body = logged_client.get("/pacientes?status=ativo&por_pagina=25&pagina=3").get_data(as_text=True)
+    # 59 ativos → página 3 de 25 mostra 51–59.
+    assert "51–59" in body
+    assert "P000 Da Silva" not in body
+
+
+# ---------------------------------------------------------------------------
 # Alteração de status em massa
 # ---------------------------------------------------------------------------
 def test_status_em_massa_altera_apenas_selecionados(logged_client):

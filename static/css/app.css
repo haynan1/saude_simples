@@ -3191,6 +3191,65 @@ body.confirm-dialog-open { overflow: hidden; }
 }
 .bulk-bar-clear:hover { color: #f8fafc; }
 .theme-dark .bulk-bar { background: #111827; border-color: #334155; box-shadow: 0 18px 45px rgba(0, 0, 0, 0.6); }
+
+/* Paginação da lista de pacientes: números com janela + elipses, seletor de
+   tamanho compacto. Mesmo vocabulário dos botões pequenos do sistema. */
+.pagination { align-items: center; display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.pagination-btn {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  color: #334155;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  height: 2rem;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 0 0.45rem;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+a.pagination-btn:hover { background: #f8fafc; border-color: var(--accent, #2563eb); color: #0f172a; }
+.pagination-btn.is-current {
+  background: var(--accent, #2563eb);
+  border-color: var(--accent, #2563eb);
+  color: #ffffff;
+  cursor: default;
+}
+.pagination-btn.is-disabled { opacity: 0.45; pointer-events: none; }
+.pagination-ellipsis { color: #94a3b8; font-size: 0.78rem; padding: 0 0.2rem; }
+.pagination-size {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2364748b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  background-position: right 0.45rem center;
+  background-repeat: no-repeat;
+  background-size: 0.65rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  color: #334155;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  height: 2rem;
+  padding: 0 1.5rem 0 0.55rem;
+}
+.pagination-size:focus {
+  border-color: var(--accent, #2563eb);
+  outline: 3px solid var(--ring, rgba(37, 99, 235, 0.2));
+  outline-offset: 0;
+}
+/* !important: vence o reset global `.theme-dark input/select` (linha ~1568). */
+.theme-dark .pagination-btn { background: #0b1220; border-color: #334155; color: #cbd5e1; }
+.theme-dark a.pagination-btn:hover { background: #1e293b; border-color: var(--accent, #60a5fa); color: #f8fafc; }
+.theme-dark .pagination-btn.is-current {
+  background: var(--accent, #2563eb);
+  border-color: var(--accent, #2563eb);
+  color: #ffffff;
+}
+.theme-dark .pagination-size { background-color: #0b1220 !important; border-color: #334155 !important; color: #cbd5e1 !important; }
 .btn-danger-outline {
   align-items: center;
   background: transparent;
