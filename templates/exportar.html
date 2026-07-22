@@ -8,37 +8,59 @@
     Início
   </a>
   <h1 class="text-2xl font-bold tracking-tight text-slate-900">Exportar relatório em PDF</h1>
-  <p class="text-sm text-slate-500 mt-1">Exporte o território inteiro ou filtre por comorbidades — a prévia ao lado é o retrato do documento.</p>
+  <p class="text-sm text-slate-500 mt-1">Exporte o território inteiro ou recorte por grupos e comorbidades — a prévia ao lado é o retrato do documento.</p>
 </div>
 
 <form method="get" action="{{ url_for('exportar_pdf') }}" id="exportFilteredPdfForm" data-no-smooth data-preview-url="{{ url_for('preview_exportar_pdf') }}">
   <input type="hidden" name="filtrar" value="1">
 
   <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-    <!-- Comorbidades -->
-    <section class="lg:col-span-3 rounded-xl border border-slate-200 bg-white">
-      <div class="section-heading">
-        <div>
-          <h2>Filtrar por comorbidades</h2>
-          <p>Marque uma ou mais condições para incluir apenas pacientes com pelo menos uma delas.</p>
+    <div class="lg:col-span-3 space-y-6">
+      <!-- Grupos demográficos -->
+      <section class="rounded-xl border border-slate-200 bg-white">
+        <div class="section-heading">
+          <div>
+            <h2>Filtrar por grupo</h2>
+            <p>Grupos se somam entre si (quem pertence a qualquer um entra); combinados com comorbidades, vale a interseção.</p>
+          </div>
+          <span class="section-badge export-group-count">0 selecionado(s)</span>
         </div>
-        <span class="section-badge export-selected-count">0 selecionada(s)</span>
-      </div>
 
-      <div class="px-6 pt-4 flex flex-wrap items-center gap-2">
-        <button class="btn-secondary export-inline-btn export-select-all" type="button">Marcar todas</button>
-        <button class="btn-secondary export-inline-btn export-clear" type="button">Limpar seleção</button>
-      </div>
+        <div class="export-options-grid px-6 pt-4 pb-6">
+          {% for opcao in opcoes_grupos %}
+            <label class="condition-option">
+              <input class="condition-check export-group" type="checkbox" name="grupos" value="{{ opcao.codigo }}">
+              <span>{{ opcao.label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </section>
 
-      <div class="export-options-grid px-6 pt-3 pb-6">
-        {% for opcao in opcoes_condicoes_saude %}
-          <label class="condition-option">
-            <input class="condition-check export-condition" type="checkbox" name="condicoes" value="{{ opcao.codigo }}">
-            <span>{{ opcao.label }}</span>
-          </label>
-        {% endfor %}
-      </div>
-    </section>
+      <!-- Comorbidades -->
+      <section class="rounded-xl border border-slate-200 bg-white">
+        <div class="section-heading">
+          <div>
+            <h2>Filtrar por comorbidades</h2>
+            <p>Marque uma ou mais condições para incluir apenas pacientes com pelo menos uma delas.</p>
+          </div>
+          <span class="section-badge export-selected-count">0 selecionada(s)</span>
+        </div>
+
+        <div class="px-6 pt-4 flex flex-wrap items-center gap-2">
+          <button class="btn-secondary export-inline-btn export-select-all" type="button">Marcar todas</button>
+          <button class="btn-secondary export-inline-btn export-clear" type="button">Limpar seleção</button>
+        </div>
+
+        <div class="export-options-grid px-6 pt-3 pb-6">
+          {% for opcao in opcoes_condicoes_saude %}
+            <label class="condition-option">
+              <input class="condition-check export-condition" type="checkbox" name="condicoes" value="{{ opcao.codigo }}">
+              <span>{{ opcao.label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
 
     <!-- Prévia: miniatura do documento -->
     <aside class="lg:col-span-2 lg:sticky lg:top-8">
@@ -49,7 +71,7 @@
           <div class="min-w-0">
             <p class="report-kicker">Relatório · PDF</p>
             <strong class="export-preview-title report-title">Prévia do relatório completo</strong>
-            <span class="export-preview-description report-sub">Marque comorbidades para ver o recorte filtrado.</span>
+            <span class="export-preview-description report-sub">Marque grupos ou comorbidades para ver o recorte filtrado.</span>
           </div>
           <span class="export-preview-mode export-preview-mode-general">Geral</span>
         </div>
@@ -74,10 +96,11 @@
           <div><span>Mulheres</span><strong data-preview-stat="mulheres">0</strong></div>
         </div>
 
+        <div class="export-preview-groups report-conditions">Nenhum grupo selecionado.</div>
         <div class="export-preview-conditions report-conditions">Nenhuma comorbidade selecionada.</div>
 
         <div class="report-actions">
-          <button type="submit" class="btn-primary w-full export-selected-submit" disabled>Exportar selecionadas</button>
+          <button type="submit" class="btn-primary w-full export-selected-submit" disabled>Exportar recorte</button>
           <a class="btn-secondary w-full" href="{{ url_for('exportar_pdf') }}" data-no-smooth title="Exportar relatório completo sem filtros">Exportar tudo (sem filtro)</a>
         </div>
       </div>

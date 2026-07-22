@@ -16,10 +16,15 @@
     return [...document.querySelectorAll('.export-condition:checked')];
   }
 
+  function getSelectedExportGroups() {
+    return [...document.querySelectorAll('.export-group:checked')];
+  }
+
   function renderExportPreview(data) {
     const title = document.querySelector('.export-preview-title');
     const description = document.querySelector('.export-preview-description');
     const mode = document.querySelector('.export-preview-mode');
+    const groups = document.querySelector('.export-preview-groups');
     const conditions = document.querySelector('.export-preview-conditions');
 
     Object.entries(data.stats || {}).forEach(([key, value]) => {
@@ -27,9 +32,14 @@
       if (target) target.textContent = value ?? 0;
     });
 
+    if (groups) {
+      const selected = (data.grupos || []).map((item) => `${item.label}: ${item.total}`);
+      groups.textContent = selected.length ? `Grupos — ${selected.join(' | ')}` : 'Nenhum grupo selecionado.';
+    }
+
     if (data.modo === 'filtrado') {
       if (title) title.textContent = 'Prévia do relatório filtrado';
-      if (description) description.textContent = 'A exportação vai incluir somente pacientes com pelo menos uma das comorbidades selecionadas.';
+      if (description) description.textContent = 'A exportação vai incluir somente os pacientes do recorte selecionado.';
       if (mode) {
         mode.textContent = 'Filtrado';
         mode.className = 'export-preview-mode export-preview-mode-filtered';
@@ -40,7 +50,7 @@
       }
     } else {
       if (title) title.textContent = 'Prévia do relatório completo';
-      if (description) description.textContent = 'Marque uma ou mais comorbidades para visualizar o recorte filtrado.';
+      if (description) description.textContent = 'Marque grupos ou comorbidades para visualizar o recorte filtrado.';
       if (mode) {
         mode.textContent = 'Geral';
         mode.className = 'export-preview-mode export-preview-mode-general';
@@ -60,6 +70,7 @@
     if (!form?.dataset.previewUrl) return;
 
     const params = new URLSearchParams();
+    getSelectedExportGroups().forEach((option) => params.append('grupos', option.value));
     getSelectedExportConditions().forEach((option) => params.append('condicoes', option.value));
 
     exportPreviewController?.abort();
@@ -84,23 +95,29 @@
   function updateExportCount() {
     if (!exportForm()) return;
 
-    const count = getSelectedExportConditions().length;
+    const conditionCount = getSelectedExportConditions().length;
+    const groupCount = getSelectedExportGroups().length;
+    const total = conditionCount + groupCount;
     const label = document.querySelector('.export-selected-count');
+    const groupLabel = document.querySelector('.export-group-count');
     const submitButton = document.querySelector('.export-selected-submit');
 
-    if (label) label.textContent = `${count} selecionada(s)`;
+    if (label) label.textContent = `${conditionCount} selecionada(s)`;
+    if (groupLabel) groupLabel.textContent = `${groupCount} selecionado(s)`;
     if (submitButton) {
-      submitButton.disabled = count === 0;
-      submitButton.title = count === 0 ? 'Selecione pelo menos uma comorbidade' : '';
+      submitButton.disabled = total === 0;
+      submitButton.title = total === 0 ? 'Selecione pelo menos um grupo ou comorbidade' : '';
       // O CTA diz exatamente o que vai acontecer.
-      submitButton.textContent = count > 0 ? `Exportar selecionadas (${count})` : 'Exportar selecionadas';
+      submitButton.textContent = total > 0 ? `Exportar recorte (${total})` : 'Exportar recorte';
     }
 
     updateExportPreview();
   }
 
   document.addEventListener('change', (event) => {
-    if (event.target.closest('.export-condition')) updateExportCount();
+    if (event.target.closest('.export-condition') || event.target.closest('.export-group')) {
+      updateExportCount();
+    }
   });
 
   document.addEventListener('click', (event) => {
@@ -124,14 +141,16 @@
     if (form.id !== 'exportFilteredPdfForm') return;
 
     event.preventDefault();
-    const selected = getSelectedExportConditions();
-    if (selected.length === 0) {
+    const selectedGroups = getSelectedExportGroups();
+    const selectedConditions = getSelectedExportConditions();
+    if (selectedGroups.length === 0 && selectedConditions.length === 0) {
       updateExportCount();
       return;
     }
 
     const params = new URLSearchParams({ filtrar: '1' });
-    selected.forEach((option) => params.append('condicoes', option.value));
+    selectedGroups.forEach((option) => params.append('grupos', option.value));
+    selectedConditions.forEach((option) => params.append('condicoes', option.value));
     window.location.href = `${form.action}?${params}`;
   });
 

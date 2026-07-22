@@ -564,6 +564,83 @@ def calcular_idade(data_nascimento):
     return idade
 
 
+# ---------------------------------------------------------------------------
+# Grupos demográficos — fonte única de verdade
+#
+# Os mesmos predicados alimentam os cards do painel, as stats do PDF e os
+# recortes de exportação. Mudou a regra (ex.: idade de corte), muda em um
+# lugar só.
+# ---------------------------------------------------------------------------
+def paciente_e_crianca(paciente):
+    return (calcular_idade(paciente["data_nascimento"]) or 999) < 12
+
+
+def paciente_e_idoso(paciente):
+    return (calcular_idade(paciente["data_nascimento"]) or 0) >= 60
+
+
+def paciente_e_gestante(paciente):
+    codigos = listar_condicao_codigos(paciente["condicoes_saude"])
+    if "gestante" in codigos:
+        return True
+    # Bancos antigos guardavam o texto livre da condição.
+    return any(
+        "gestante" in texto_normalizado(condicao)
+        for condicao in listar_condicoes(paciente["condicoes_saude"])
+    )
+
+
+def paciente_e_homem(paciente):
+    return str(paciente["sexo"] or "").lower() == "masculino"
+
+
+def paciente_e_mulher(paciente):
+    return str(paciente["sexo"] or "").lower() == "feminino"
+
+
+# "Pacientes (todos)" do painel é o estado sem grupo marcado — não é um grupo.
+GRUPOS_DEMOGRAFICOS_OPCOES = [
+    {"codigo": "criancas", "label": "Crianças (até 11 anos)"},
+    {"codigo": "idosos", "label": "Idosos 60+"},
+    {"codigo": "gestantes", "label": "Gestantes"},
+    {"codigo": "homens", "label": "Homens"},
+    {"codigo": "mulheres", "label": "Mulheres"},
+]
+GRUPOS_POR_CODIGO = {opcao["codigo"]: opcao["label"] for opcao in GRUPOS_DEMOGRAFICOS_OPCOES}
+GRUPOS_PREDICADOS = {
+    "criancas": paciente_e_crianca,
+    "idosos": paciente_e_idoso,
+    "gestantes": paciente_e_gestante,
+    "homens": paciente_e_homem,
+    "mulheres": paciente_e_mulher,
+}
+
+
+def ler_codigos_grupos(values):
+    """Whitelist dos grupos vindos da query string, preservando a ordem."""
+    codigos = []
+    for value in values:
+        value = str(value or "").strip()
+        if value in GRUPOS_PREDICADOS and value not in codigos:
+            codigos.append(value)
+    return codigos
+
+
+def paciente_em_grupos(paciente, grupos):
+    """União: sem grupo marcado todo mundo passa; com grupos, basta pertencer
+    a um deles."""
+    if not grupos:
+        return True
+    return any(GRUPOS_PREDICADOS[grupo](paciente) for grupo in grupos)
+
+
+def rotulo_grupos(grupos):
+    labels = [GRUPOS_POR_CODIGO[grupo] for grupo in grupos]
+    if len(labels) <= 1:
+        return "".join(labels)
+    return ", ".join(labels[:-1]) + " e " + labels[-1]
+
+
 def build_dashboard_stats(casas, pacientes):
     total_casas = len(casas)
     # "Vazia" é um achado de campo apenas para imóvel residencial — loja,
@@ -574,26 +651,16 @@ def build_dashboard_stats(casas, pacientes):
         if casa["total_pacientes"] == 0 and tipo_imovel_de(casa) in TIPOS_IMOVEL_RESIDENCIAIS
     )
     total_pacientes = len(pacientes)
-    criancas = sum(1 for paciente in pacientes if (calcular_idade(paciente["data_nascimento"]) or 999) < 12)
-    idosos = sum(1 for paciente in pacientes if (calcular_idade(paciente["data_nascimento"]) or 0) >= 60)
-    gestantes = 0
-    homens = 0
-    mulheres = 0
+    # Mesmos predicados dos recortes de exportação — uma única régua.
+    criancas = sum(1 for paciente in pacientes if paciente_e_crianca(paciente))
+    idosos = sum(1 for paciente in pacientes if paciente_e_idoso(paciente))
+    gestantes = sum(1 for paciente in pacientes if paciente_e_gestante(paciente))
+    homens = sum(1 for paciente in pacientes if paciente_e_homem(paciente))
+    mulheres = sum(1 for paciente in pacientes if paciente_e_mulher(paciente))
     comorbidades = {condicao: 0 for condicao in CONDICOES_SAUDE}
 
     for paciente in pacientes:
-        sexo = str(paciente["sexo"] or "").lower()
-        if sexo == "masculino":
-            homens += 1
-        elif sexo == "feminino":
-            mulheres += 1
-
-        condicoes = listar_condicoes(paciente["condicoes_saude"])
-        condicao_codigos = listar_condicao_codigos(paciente["condicoes_saude"])
-        if "gestante" in condicao_codigos or any("gestante" in texto_normalizado(condicao) for condicao in condicoes):
-            gestantes += 1
-
-        for codigo in condicao_codigos:
+        for codigo in listar_condicao_codigos(paciente["condicoes_saude"]):
             condicao = condicao_label(codigo)
             comorbidades[condicao] = comorbidades.get(condicao, 0) + 1
 
@@ -619,8 +686,9 @@ def ler_codigos_condicoes(values):
     return codigos
 
 
-def carregar_dados_relatorio(condicoes_selecionadas=None, filtro_sem_selecao=False):
+def carregar_dados_relatorio(condicoes_selecionadas=None, filtro_sem_selecao=False, grupos_selecionados=None):
     condicoes_selecionadas = condicoes_selecionadas or []
+    grupos_selecionados = grupos_selecionados or []
     conn = get_db_connection()
     casas = conn.execute(
         f"""
@@ -637,14 +705,19 @@ def carregar_dados_relatorio(condicoes_selecionadas=None, filtro_sem_selecao=Fal
     ).fetchall()
     conn.close()
 
-    if condicoes_selecionadas:
+    if condicoes_selecionadas or grupos_selecionados:
+        # Grupos entre si: UNIÃO. Grupos × comorbidades: INTERSEÇÃO.
         pacientes = [
-            paciente for paciente in pacientes if paciente_tem_condicoes(paciente, condicoes_selecionadas)
+            paciente
+            for paciente in pacientes
+            if paciente_tem_condicoes(paciente, condicoes_selecionadas)
+            and paciente_em_grupos(paciente, grupos_selecionados)
         ]
         total_por_casa = {}
         for paciente in pacientes:
             total_por_casa[paciente["casa_id"]] = total_por_casa.get(paciente["casa_id"], 0) + 1
 
+        # Só casas com pacientes no recorte entram no relatório.
         casas = [
             {**dict(casa), "total_pacientes": total_por_casa[casa["id"]]}
             for casa in casas
@@ -1819,14 +1892,17 @@ def importar_pacientes():
 @app.route("/exportar")
 @login_required
 def exportar():
-    return render_template("exportar.html")
+    return render_template("exportar.html", opcoes_grupos=GRUPOS_DEMOGRAFICOS_OPCOES)
 
 
 @app.route("/exportar/preview")
 @login_required
 def preview_exportar_pdf():
     condicoes_selecionadas = ler_codigos_condicoes(request.args.getlist("condicoes"))
-    casas, pacientes = carregar_dados_relatorio(condicoes_selecionadas)
+    grupos_selecionados = ler_codigos_grupos(request.args.getlist("grupos"))
+    casas, pacientes = carregar_dados_relatorio(
+        condicoes_selecionadas, grupos_selecionados=grupos_selecionados
+    )
     stats = build_dashboard_stats(casas, pacientes)
     comorbidades = dict(stats["comorbidades"])
     condicoes_preview = [
@@ -1837,11 +1913,22 @@ def preview_exportar_pdf():
         }
         for codigo in condicoes_selecionadas
     ]
+    # Totais por grupo calculados sobre o recorte já filtrado — a prévia
+    # descreve exatamente o documento que sai.
+    grupos_preview = [
+        {
+            "codigo": codigo,
+            "label": GRUPOS_POR_CODIGO[codigo],
+            "total": sum(1 for paciente in pacientes if GRUPOS_PREDICADOS[codigo](paciente)),
+        }
+        for codigo in grupos_selecionados
+    ]
 
     return jsonify(
         {
-            "modo": "filtrado" if condicoes_selecionadas else "geral",
+            "modo": "filtrado" if (condicoes_selecionadas or grupos_selecionados) else "geral",
             "condicoes": condicoes_preview,
+            "grupos": grupos_preview,
             "stats": {
                 "total_casas": stats["total_casas"],
                 "casas_vazias": stats["casas_vazias"],
@@ -1860,11 +1947,14 @@ def preview_exportar_pdf():
 @login_required
 def exportar_pdf():
     condicoes_selecionadas = ler_codigos_condicoes(request.args.getlist("condicoes"))
-    modo_filtro = request.args.get("filtrar") == "1" or bool(condicoes_selecionadas)
-    filtro_ativo = bool(condicoes_selecionadas)
+    grupos_selecionados = ler_codigos_grupos(request.args.getlist("grupos"))
+    filtro_ativo = bool(condicoes_selecionadas or grupos_selecionados)
+    modo_filtro = request.args.get("filtrar") == "1" or filtro_ativo
     filtro_sem_selecao = modo_filtro and not filtro_ativo
     filtro_labels = [condicao_label(codigo) for codigo in condicoes_selecionadas]
-    casas, pacientes = carregar_dados_relatorio(condicoes_selecionadas, filtro_sem_selecao)
+    casas, pacientes = carregar_dados_relatorio(
+        condicoes_selecionadas, filtro_sem_selecao, grupos_selecionados
+    )
 
     pacientes_por_casa = {}
     for paciente in pacientes:
@@ -1996,10 +2086,20 @@ def exportar_pdf():
             subtitle_style,
         ),
     ]
-    if modo_filtro:
-        filtro_texto = ", ".join(filtro_labels) if filtro_labels else "nenhuma comorbidade selecionada"
+    if grupos_selecionados:
         elements.append(
-            Paragraph(f"<b>Filtro por comorbidade:</b> {filtro_texto}", subtitle_style)
+            Paragraph(
+                f"<b>Recorte:</b> {xml_escape(rotulo_grupos(grupos_selecionados))}",
+                subtitle_style,
+            )
+        )
+    if condicoes_selecionadas:
+        elements.append(
+            Paragraph(f"<b>Filtro por comorbidade:</b> {', '.join(filtro_labels)}", subtitle_style)
+        )
+    elif filtro_sem_selecao:
+        elements.append(
+            Paragraph("<b>Filtro:</b> nenhum grupo ou comorbidade selecionado", subtitle_style)
         )
 
     report_image_path = os.path.join(BASE_DIR, "image", "image.jpg")
@@ -2133,9 +2233,9 @@ def exportar_pdf():
 
     if not casas:
         if filtro_sem_selecao:
-            empty_message = "Nenhuma comorbidade selecionada para exportação."
+            empty_message = "Nenhum grupo ou comorbidade selecionado para exportação."
         elif filtro_ativo:
-            empty_message = "Nenhum paciente encontrado para as comorbidades selecionadas."
+            empty_message = "Nenhum paciente encontrado para o recorte selecionado."
         else:
             empty_message = "Nenhuma casa cadastrada."
         elements.append(
@@ -2281,10 +2381,19 @@ def exportar_pdf():
 
     doc.build(elements, onFirstPage=adicionar_cabecalho_rodape, onLaterPages=adicionar_cabecalho_rodape)
     buffer.seek(0)
+    # O nome do arquivo declara o recorte — vários PDFs baixados não viram
+    # uma pilha de "relatorio (3).pdf" indistinguíveis.
+    partes_nome = list(grupos_selecionados)
+    if condicoes_selecionadas:
+        partes_nome.append("comorbidades")
+    if partes_nome:
+        nome_pdf = "relatorio_" + "_".join(partes_nome) + ".pdf"
+    else:
+        nome_pdf = "relatorio_pacientes_por_casa.pdf"
     return send_file(
         buffer,
         as_attachment=True,
-        download_name="relatorio_pacientes_por_casa.pdf",
+        download_name=nome_pdf,
         mimetype="application/pdf",
     )
 
