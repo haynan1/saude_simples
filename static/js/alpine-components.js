@@ -18,6 +18,22 @@ document.addEventListener('alpine:init', () => {
     },
   }));
 
+  // Upload de banco na tela de importação: mostra o nome do arquivo escolhido
+  // e mantém o botão de envio travado até existir arquivo.
+  Alpine.data('dbImport', () => ({
+    fileName: '',
+    onChange() {
+      const file = this.$refs.input.files[0];
+      this.fileName = file ? file.name : '';
+    },
+    get label() {
+      return this.fileName || 'Escolher arquivo .db';
+    },
+    get noFile() {
+      return this.fileName === '';
+    },
+  }));
+
   // Seletor de condições de saúde no formulário de paciente. Getters expõem
   // estado derivado como propriedades simples porque o build CSP do Alpine
   // não avalia expressões inline complexas nos atributos.

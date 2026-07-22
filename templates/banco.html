@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Banco de dados{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <a href="{{ url_for('index') }}" class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline mb-2">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    Início
+  </a>
+  <h1 class="text-2xl font-bold tracking-tight text-slate-900">Banco de dados</h1>
+  <p class="text-sm text-slate-500 mt-1">Backup, exportação e importação dos dados do sistema.</p>
+</div>
+
+<!-- Visão geral -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+  <div class="rounded-xl border border-slate-200 bg-white p-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Quadras</p>
+    <p class="text-2xl font-bold text-slate-900 mt-1">{{ contagens.quadras }}</p>
+  </div>
+  <div class="rounded-xl border border-slate-200 bg-white p-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Casas</p>
+    <p class="text-2xl font-bold text-slate-900 mt-1">{{ contagens.casas }}</p>
+  </div>
+  <div class="rounded-xl border border-slate-200 bg-white p-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Pacientes</p>
+    <p class="text-2xl font-bold text-slate-900 mt-1">{{ contagens.pacientes }}</p>
+  </div>
+  <div class="rounded-xl border border-slate-200 bg-white p-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Tamanho do banco</p>
+    <p class="text-2xl font-bold text-slate-900 mt-1">{{ tamanho_banco|tamanho }}</p>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+  <!-- Exportar -->
+  <section class="rounded-xl border border-slate-200 bg-white">
+    <div class="section-heading">
+      <div>
+        <h2>Exportar banco</h2>
+        <p>Baixa um snapshot consistente de todos os dados em um arquivo .db — ideal para levar a outra máquina ou guardar fora do computador.</p>
+      </div>
+      <span class="section-badge">Seguro</span>
+    </div>
+    <div class="px-6 py-5 flex flex-wrap items-center gap-3">
+      <a class="btn-primary" href="{{ url_for('exportar_banco') }}" data-no-smooth>Exportar banco (.db)</a>
+      <form method="post" action="{{ url_for('criar_backup_manual') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn-secondary" type="submit">Criar backup agora</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Importar -->
+  <section class="rounded-xl border border-slate-200 bg-white danger-card">
+    <div class="section-heading">
+      <div>
+        <h2>Importar banco</h2>
+        <p>Substitui todos os dados atuais pelos do arquivo .db enviado. Um backup do estado atual é criado automaticamente antes. A senha de acesso atual é mantida.</p>
+      </div>
+      <span class="section-badge danger">Substitui os dados</span>
+    </div>
+    <div class="px-6 py-5">
+      <form
+        method="post"
+        action="{{ url_for('importar_banco_view') }}"
+        enctype="multipart/form-data"
+        x-data="dbImport"
+        data-confirm="Importar este arquivo substitui TODOS os dados atuais do sistema. Um backup será criado antes. Continuar?"
+        data-confirm-title="Importar banco de dados?"
+        data-confirm-label="Sim, importar"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="file-drop">
+          <svg class="file-drop-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          <span x-text="label">Escolher arquivo .db</span>
+          <small>Somente bancos exportados do Saúde Simples</small>
+          <input type="file" name="arquivo" accept=".db" class="sr-only" x-ref="input" @change="onChange">
+        </label>
+        <button class="btn-danger-outline w-full" type="submit" :disabled="noFile">Importar e substituir dados</button>
+      </form>
+    </div>
+  </section>
+</div>
+
+<!-- Backups -->
+<section class="rounded-xl border border-slate-200 bg-white">
+  <div class="section-heading">
+    <div>
+      <h2>Backups automáticos</h2>
+      <p>Criados a cada inicialização e antes de toda operação destrutiva. Os 50 mais recentes são mantidos.</p>
+    </div>
+    <span class="section-badge">{{ backups|length }} arquivo(s)</span>
+  </div>
+
+  {% if backups %}
+    <div class="divide-y divide-slate-100">
+      {% for backup in backups %}
+        <div class="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-slate-900">
+              {{ backup.modificado.strftime('%d/%m/%Y às %H:%M:%S') }}
+            </p>
+            <p class="text-xs text-slate-500 mt-0.5">
+              {% if backup.motivo %}<span class="font-semibold">{{ backup.motivo }}</span> · {% endif %}{{ backup.tamanho|tamanho }}
+            </p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <a class="btn-secondary house-tile-btn" href="{{ url_for('baixar_backup', nome=backup.nome) }}" data-no-smooth>Baixar</a>
+            <form method="post" action="{{ url_for('restaurar_banco') }}"
+                  data-confirm="Restaurar este backup substitui os dados atuais pelos de {{ backup.modificado.strftime('%d/%m/%Y às %H:%M') }}. Um backup do estado atual será criado antes. Continuar?"
+                  data-confirm-title="Restaurar backup?"
+                  data-confirm-label="Sim, restaurar">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="nome" value="{{ backup.nome }}">
+              <button class="btn-danger-outline house-tile-btn" type="submit">Restaurar</button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="px-6 py-10 text-center">
+      <p class="text-sm font-bold text-slate-900 mb-1">Nenhum backup ainda</p>
+      <p class="text-sm text-slate-500">O primeiro backup é criado automaticamente na próxima inicialização — ou clique em "Criar backup agora".</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

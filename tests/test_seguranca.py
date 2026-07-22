@@ -20,9 +20,15 @@ ROTAS_PROTEGIDAS_GET = [
     "/exportar/preview",
     "/exportar/pdf",
     "/conta/senha",
+    "/banco",
+    "/banco/exportar",
+    "/banco/backup/database_x.db/baixar",
 ]
 
 ROTAS_PROTEGIDAS_POST = [
+    "/banco/backup",
+    "/banco/restaurar",
+    "/banco/importar",
     "/quadra/nova",
     "/quadra/1/editar",
     "/quadra/1/excluir",

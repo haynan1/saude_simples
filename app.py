@@ -2,6 +2,7 @@ import logging
 import os
 import secrets
 import sqlite3
+import tempfile
 import threading
 import time
 import unicodedata
@@ -22,17 +23,25 @@ from reportlab.lib.units import cm
 from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from werkzeug.exceptions import RequestEntityTooLarge
+
 from db import (
     BASE_DIR,
     DATABASE,
     MIN_PASSWORD_LENGTH,
+    BancoInvalido,
+    caminho_backup,
     clear_setup_token,
     criar_backup,
     ensure_setup_token,
+    exportar_snapshot,
     garantir_senha_inicial,
     get_db_connection,
     get_senha_hash,
+    importar_banco,
     init_db,
+    listar_backups,
+    restaurar_backup,
     set_senha_hash,
     verify_setup_token,
 )
@@ -67,6 +76,22 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get(
 # Nenhum formulário legítimo chega perto disso — bloqueia payloads gigantes
 # antes de qualquer parsing.
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
+
+# Exceção única: importação de banco recebe um arquivo .db real.
+IMPORT_MAX_BYTES = 200 * 1024 * 1024
+
+
+@app.before_request
+def ajustar_limite_de_upload():
+    if request.path == "/banco/importar":
+        request.max_content_length = IMPORT_MAX_BYTES
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def arquivo_grande_demais(_error):
+    flash("O arquivo enviado excede o tamanho máximo permitido.", "danger")
+    destino = "banco" if request.path.startswith("/banco") else "index"
+    return redirect(url_for(destino))
 
 APP_VERSION = "2.0.0"
 
@@ -542,6 +567,18 @@ def carregar_dados_relatorio(condicoes_selecionadas=None, filtro_sem_selecao=Fal
     return casas, pacientes
 
 
+def formatar_tamanho(num_bytes):
+    num_bytes = int(num_bytes or 0)
+    for unidade in ("B", "KB", "MB", "GB"):
+        if num_bytes < 1024 or unidade == "GB":
+            if unidade == "B":
+                return f"{num_bytes} {unidade}"
+            return f"{num_bytes:.1f} {unidade}"
+        num_bytes /= 1024
+    return f"{num_bytes:.1f} GB"
+
+
+app.add_template_filter(formatar_tamanho, "tamanho")
 app.add_template_filter(formatar_cpf_ou_cns, "cpf_cns")
 app.add_template_filter(formatar_data_br, "data_br")
 app.add_template_filter(formatar_telefone, "telefone")
@@ -1576,6 +1613,169 @@ def exportar_pdf():
         download_name="relatorio_pacientes_por_casa.pdf",
         mimetype="application/pdf",
     )
+
+
+@app.route("/banco")
+@login_required
+def banco():
+    conn = get_db_connection()
+    contagens = {
+        "quadras": conn.execute("SELECT COUNT(*) AS c FROM quadras").fetchone()["c"],
+        "casas": conn.execute("SELECT COUNT(*) AS c FROM casas").fetchone()["c"],
+        "pacientes": conn.execute("SELECT COUNT(*) AS c FROM pacientes").fetchone()["c"],
+    }
+    conn.close()
+
+    try:
+        tamanho_banco = os.path.getsize(DATABASE)
+    except OSError:
+        tamanho_banco = 0
+
+    return render_template(
+        "banco.html",
+        contagens=contagens,
+        tamanho_banco=tamanho_banco,
+        backups=listar_backups(),
+    )
+
+
+@app.route("/banco/backup", methods=["POST"])
+@login_required
+def criar_backup_manual():
+    try:
+        criar_backup("manual")
+    except (sqlite3.Error, OSError) as exc:
+        logger.error("Falha ao criar backup manual: %s", exc)
+        flash("Não foi possível criar o backup. Tente novamente.", "danger")
+        return redirect(url_for("banco"))
+
+    flash("Backup criado com sucesso.", "success")
+    return redirect(url_for("banco"))
+
+
+@app.route("/banco/exportar")
+@login_required
+def exportar_banco():
+    # Snapshot consistente via API de backup do SQLite — nunca o arquivo cru,
+    # que poderia estar no meio de uma transação WAL.
+    descritor, caminho_tmp = tempfile.mkstemp(suffix=".db")
+    os.close(descritor)
+    try:
+        exportar_snapshot(caminho_tmp)
+        with open(caminho_tmp, "rb") as arquivo:
+            conteudo = BytesIO(arquivo.read())
+    except (sqlite3.Error, OSError) as exc:
+        logger.error("Falha ao exportar banco: %s", exc)
+        flash("Não foi possível exportar o banco. Tente novamente.", "danger")
+        return redirect(url_for("banco"))
+    finally:
+        try:
+            os.remove(caminho_tmp)
+        except OSError:
+            pass
+
+    conteudo.seek(0)
+    logger.info("Banco exportado a partir de %s", request.remote_addr)
+    nome = f"saude_simples_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+    return send_file(
+        conteudo,
+        as_attachment=True,
+        download_name=nome,
+        mimetype="application/x-sqlite3",
+    )
+
+
+@app.route("/banco/backup/<nome>/baixar")
+@login_required
+def baixar_backup(nome):
+    try:
+        caminho = caminho_backup(nome)
+    except ValueError:
+        flash("Backup não encontrado.", "warning")
+        return redirect(url_for("banco"))
+
+    return send_file(
+        caminho,
+        as_attachment=True,
+        download_name=nome,
+        mimetype="application/x-sqlite3",
+    )
+
+
+@app.route("/banco/restaurar", methods=["POST"])
+@login_required
+def restaurar_banco():
+    nome = request.form.get("nome", "")
+    try:
+        caminho_backup(nome)
+    except ValueError:
+        flash("Backup não encontrado.", "warning")
+        return redirect(url_for("banco"))
+
+    try:
+        criar_backup("antes_restaurar")
+    except (sqlite3.Error, OSError) as exc:
+        logger.error("Falha ao criar backup antes de restaurar: %s", exc)
+        flash("Não foi possível criar backup de segurança. Restauração cancelada.", "danger")
+        return redirect(url_for("banco"))
+
+    # A senha de acesso ATUAL sobrevive à restauração — voltar os dados no
+    # tempo nunca tranca o operador para fora. Para recuperar senha esquecida,
+    # o caminho é o resetar_senha.py.
+    senha_atual = get_senha_hash()
+    try:
+        restaurar_backup(nome)
+    except (sqlite3.Error, OSError) as exc:
+        logger.error("Falha ao restaurar backup %s: %s", nome, exc)
+        flash("Não foi possível restaurar o backup.", "danger")
+        return redirect(url_for("banco"))
+    if senha_atual:
+        set_senha_hash(senha_atual)
+
+    logger.info("Backup %s restaurado a partir de %s", nome, request.remote_addr)
+    flash("Backup restaurado com sucesso.", "success")
+    return redirect(url_for("banco"))
+
+
+@app.route("/banco/importar", methods=["POST"])
+@login_required
+def importar_banco_view():
+    arquivo = request.files.get("arquivo")
+    if arquivo is None or not arquivo.filename:
+        flash("Selecione o arquivo .db exportado do Saúde Simples.", "danger")
+        return redirect(url_for("banco"))
+
+    descritor, caminho_tmp = tempfile.mkstemp(suffix=".db")
+    os.close(descritor)
+    try:
+        arquivo.save(caminho_tmp)
+
+        try:
+            criar_backup("antes_importar")
+        except (sqlite3.Error, OSError) as exc:
+            logger.error("Falha ao criar backup antes de importar: %s", exc)
+            flash("Não foi possível criar backup de segurança. Importação cancelada.", "danger")
+            return redirect(url_for("banco"))
+
+        try:
+            importar_banco(caminho_tmp)
+        except BancoInvalido as exc:
+            logger.warning("Importação de banco rejeitada (%s): %s", request.remote_addr, exc)
+            flash(str(exc), "danger")
+            return redirect(url_for("banco"))
+        except (sqlite3.Error, OSError) as exc:
+            logger.error("Falha ao importar banco: %s", exc)
+            flash("Não foi possível importar o banco. O banco atual foi preservado.", "danger")
+            return redirect(url_for("banco"))
+    finally:
+        try:
+            os.remove(caminho_tmp)
+        except OSError:
+            pass
+
+    logger.info("Banco importado a partir de %s", request.remote_addr)
+    flash("Banco importado com sucesso. A senha de acesso atual foi mantida.", "success")
+    return redirect(url_for("banco"))
 
 
 if __name__ == "__main__":

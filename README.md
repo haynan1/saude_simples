@@ -81,15 +81,25 @@ Depois disso é só fazer login normalmente com a nova senha.
 
 Dentro do sistema, use **Alterar senha** na barra lateral (seção "Conta"). Pede a senha atual + a nova senha — diferente do `resetar_senha.py`, que é pra quando você **não** sabe a senha atual.
 
-## Backups automáticos
+## Banco de dados — backup, exportação e importação
 
-O sistema guarda cópias de segurança do banco de dados em `backups/`, criadas automaticamente:
+Na barra lateral, **Banco de dados** concentra a gestão dos dados:
+
+- **Exportar banco (.db)** — baixa um snapshot consistente de todos os dados (via API de backup do SQLite, seguro mesmo com o servidor em uso). Ideal para levar a outra máquina ou guardar fora do computador.
+- **Importar banco** — substitui os dados atuais pelo arquivo .db enviado. O arquivo é validado (assinatura SQLite, integridade, esquema do Saúde Simples), um backup do estado atual é criado antes, e a **senha de acesso atual é mantida** — importar dados de outra máquina nunca tranca você para fora.
+- **Criar backup agora** — backup manual sob demanda.
+- **Restaurar** — volta o sistema ao estado de qualquer backup listado (com backup do estado atual criado antes; a senha atual também é mantida).
+
+### Backups automáticos
+
+Cópias de segurança em `backups/`, criadas automaticamente:
 
 - Toda vez que o servidor inicia.
 - Antes de excluir uma quadra, casa ou paciente.
+- Antes de importar ou restaurar um banco.
 - Antes de redefinir a senha pelo `resetar_senha.py`.
 
-São mantidos os 50 backups mais recentes; os mais antigos são removidos automaticamente. Se uma exclusão importante der problema, basta restaurar o banco a partir do arquivo mais recente em `backups/` (copie para `instance/database.db` com o servidor parado).
+São mantidos os 50 backups mais recentes; os mais antigos são removidos automaticamente. A restauração também pode ser feita pela tela **Banco de dados**, sem mexer em arquivos.
 
 O banco fica em `instance/database.db`. Instalações antigas (banco na raiz do projeto) são migradas automaticamente no primeiro boot.
 

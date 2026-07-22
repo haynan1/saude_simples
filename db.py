@@ -82,6 +82,144 @@ def criar_backup(motivo):
     podar_backups_antigos()
 
 
+def listar_backups():
+    """Backups disponíveis, do mais recente ao mais antigo."""
+    if not os.path.isdir(BACKUP_DIR):
+        return []
+
+    backups = []
+    for nome in os.listdir(BACKUP_DIR):
+        if not (nome.startswith("database_") and nome.endswith(".db")):
+            continue
+        caminho = os.path.join(BACKUP_DIR, nome)
+        try:
+            stat = os.stat(caminho)
+        except OSError:
+            continue
+        # database_YYYYMMDD_HHMMSS_micros_motivo.db → motivo legível
+        miolo = nome[len("database_"):-len(".db")]
+        partes = miolo.split("_", 3)
+        motivo = partes[3].replace("_", " ") if len(partes) == 4 else ""
+        backups.append(
+            {
+                "nome": nome,
+                "tamanho": stat.st_size,
+                "modificado": datetime.fromtimestamp(stat.st_mtime),
+                "motivo": motivo,
+            }
+        )
+
+    backups.sort(key=lambda item: item["nome"], reverse=True)
+    return backups
+
+
+def backup_valido(nome):
+    """Só aceita nomes que existem de fato no diretório de backups — nunca um
+    caminho vindo do cliente. Bloqueia path traversal por construção."""
+    if not os.path.isdir(BACKUP_DIR):
+        return False
+    return nome in os.listdir(BACKUP_DIR) and nome.startswith("database_") and nome.endswith(".db")
+
+
+def caminho_backup(nome):
+    if not backup_valido(nome):
+        raise ValueError(f"Backup inexistente ou nome inválido: {nome!r}")
+    return os.path.join(BACKUP_DIR, nome)
+
+
+def exportar_snapshot(destino):
+    """Grava em `destino` um snapshot consistente do banco (API de backup do
+    SQLite — inclui transações do WAL, ao contrário de copiar o arquivo cru)."""
+    origem = get_db_connection()
+    try:
+        copia = sqlite3.connect(destino)
+        try:
+            origem.backup(copia)
+        finally:
+            copia.close()
+    finally:
+        origem.close()
+
+
+def _sobrescrever_banco_com(caminho_origem):
+    """Substitui o conteúdo do banco ativo pelo do arquivo dado, via API de
+    backup (transacional — leitores concorrentes nunca veem estado parcial)."""
+    origem = sqlite3.connect(caminho_origem)
+    try:
+        destino = get_db_connection()
+        try:
+            origem.backup(destino)
+        finally:
+            destino.close()
+    finally:
+        origem.close()
+
+
+def restaurar_backup(nome):
+    """Restaura um backup por cima do banco ativo. O chamador é responsável
+    por criar backup do estado atual ANTES de chamar."""
+    _sobrescrever_banco_com(caminho_backup(nome))
+    logger.info("Banco restaurado a partir do backup %s", nome)
+
+
+class BancoInvalido(ValueError):
+    """Arquivo enviado não é um banco do Saúde Simples utilizável."""
+
+
+_TABELAS_OBRIGATORIAS = {"quadras", "casas", "pacientes"}
+
+
+def validar_banco_importado(caminho):
+    """Valida um candidato a importação: assinatura SQLite, integridade e
+    esquema mínimo. Levanta BancoInvalido com mensagem legível."""
+    try:
+        with open(caminho, "rb") as arquivo:
+            cabecalho = arquivo.read(16)
+    except OSError as exc:
+        raise BancoInvalido("Não foi possível ler o arquivo enviado.") from exc
+
+    if cabecalho != b"SQLite format 3\x00":
+        raise BancoInvalido("O arquivo enviado não é um banco de dados SQLite.")
+
+    try:
+        conn = sqlite3.connect(caminho)
+        try:
+            resultado = conn.execute("PRAGMA integrity_check").fetchone()
+            if not resultado or resultado[0] != "ok":
+                raise BancoInvalido("O banco enviado está corrompido (falhou na verificação de integridade).")
+            tabelas = {
+                linha[0]
+                for linha in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError as exc:
+        raise BancoInvalido("O arquivo enviado não pôde ser aberto como banco SQLite.") from exc
+
+    faltando = _TABELAS_OBRIGATORIAS - tabelas
+    if faltando:
+        raise BancoInvalido(
+            "O banco enviado não parece ser do Saúde Simples — faltam as tabelas: "
+            + ", ".join(sorted(faltando))
+            + "."
+        )
+
+
+def importar_banco(caminho_origem):
+    """Substitui o banco ativo pelo arquivo validado, preservando a senha de
+    acesso ATUAL — importar dados de outra máquina nunca tranca o operador
+    para fora. O chamador cria backup do estado atual antes."""
+    validar_banco_importado(caminho_origem)
+
+    senha_atual = get_senha_hash()
+    _sobrescrever_banco_com(caminho_origem)
+    # Reaplica migrações/índices sobre o banco importado (pode vir de versão antiga).
+    init_db()
+    if senha_atual:
+        set_senha_hash(senha_atual)
+    logger.info("Banco importado com sucesso (senha de acesso local preservada).")
+
+
 def init_db():
     conn = get_db_connection()
     conn.execute(

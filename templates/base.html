@@ -207,6 +207,14 @@
         <span x-show="!sidebarCollapsed" x-cloak>Exportar PDF</span>
       </button>
 
+      <a data-nav-link href="{{ url_for('banco') }}"
+         class="flex items-center py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white {{ 'nav-active text-white' if current_endpoint == 'banco' else '' }}"
+         :class="sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3'"
+         title="Banco de dados">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 1.1 3.6 2 8 2s8-.9 8-2V7"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7c0 1.1 3.6 2 8 2s8-.9 8-2-3.6-2-8-2-8 .9-8 2z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 12c0 1.1 3.6 2 8 2s8-.9 8-2"/></svg>
+        <span x-show="!sidebarCollapsed" x-cloak>Banco de dados</span>
+      </a>
+
       <div class="mt-2 pt-3 border-t border-slate-800 space-y-1">
         <p class="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500" x-show="!sidebarCollapsed" x-cloak>Conta</p>
 
@@ -280,6 +288,7 @@
       <a href="{{ url_for('cadastrar_casa') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Nova casa</a>
       <a href="{{ url_for('cadastrar_quadra') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Nova quadra</a>
       <button type="button" data-export-open class="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Exportar PDF</button>
+      <a href="{{ url_for('banco') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Banco de dados</a>
       <a href="{{ url_for('alterar_senha') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Alterar senha</a>
       <form method="post" action="{{ url_for('logout') }}" data-no-smooth>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
