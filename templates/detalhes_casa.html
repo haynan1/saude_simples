@@ -11,6 +11,12 @@
     </a>
     <h1 class="text-2xl font-bold tracking-tight text-slate-900">Casa {{ casa.numero_casa }}</h1>
     <div class="flex flex-wrap items-center gap-2 mt-2">
+      {% set tipo = casa.tipo_imovel or 'domicilio' %}
+      {% if tipo != 'domicilio' %}
+        <span class="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+          {{ tipo|tipo_imovel }}
+        </span>
+      {% endif %}
       {% if casa.numero_quadra %}
         <span class="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
           Quadra {{ casa.numero_quadra }}

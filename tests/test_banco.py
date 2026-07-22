@@ -189,5 +189,7 @@ def test_importar_banco_de_versao_antiga_ganha_migracoes(logged_client, tmp_path
         linha["name"]
         for linha in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
     }
+    colunas_casas = {linha["name"] for linha in conn.execute("PRAGMA table_info(casas)")}
     conn.close()
     assert "idx_pacientes_casa_id" in indices
+    assert "tipo_imovel" in colunas_casas  # coluna nova entra no banco importado

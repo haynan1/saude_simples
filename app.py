@@ -216,6 +216,35 @@ def requisicao_e_local():
     # werkzeug.middleware.proxy_fix.ProxyFix ou desative esta rota.
     return request.remote_addr in ("127.0.0.1", "::1")
 
+TIPOS_IMOVEL_OPCOES = [
+    {"codigo": "domicilio", "label": "Domicílio"},
+    {"codigo": "loja", "label": "Loja"},
+    {"codigo": "lava_jato", "label": "Lava Jato"},
+    {"codigo": "terreno_baldio", "label": "Terreno Baldio"},
+    {"codigo": "escola", "label": "Escola"},
+    {"codigo": "em_construcao", "label": "Em construção"},
+]
+TIPOS_IMOVEL_POR_CODIGO = {opcao["codigo"]: opcao["label"] for opcao in TIPOS_IMOVEL_OPCOES}
+
+
+def normalizar_tipo_imovel(value):
+    value = str(value or "").strip()
+    return value if value in TIPOS_IMOVEL_POR_CODIGO else "domicilio"
+
+
+def tipo_imovel_label(value):
+    return TIPOS_IMOVEL_POR_CODIGO.get(str(value or "").strip(), "Domicílio")
+
+
+def tipo_imovel_de(casa):
+    """Lê o tipo de uma linha de casa tolerando bancos antigos importados
+    (coluna pode não existir até o init_db rodar) e valores nulos."""
+    try:
+        return normalizar_tipo_imovel(casa["tipo_imovel"])
+    except (IndexError, KeyError):
+        return "domicilio"
+
+
 CONDICOES_SAUDE_OPCOES = [
     {"codigo": "gestante", "label": "Está gestante"},
     {"codigo": "abaixo_peso", "label": "Abaixo do peso"},
@@ -484,7 +513,13 @@ def calcular_idade(data_nascimento):
 
 def build_dashboard_stats(casas, pacientes):
     total_casas = len(casas)
-    casas_vazias = sum(1 for casa in casas if casa["total_pacientes"] == 0)
+    # "Vazia" é um achado de campo apenas para domicílio — loja, escola ou
+    # terreno baldio sem morador é o esperado, não um alerta.
+    casas_vazias = sum(
+        1
+        for casa in casas
+        if casa["total_pacientes"] == 0 and tipo_imovel_de(casa) == "domicilio"
+    )
     total_pacientes = len(pacientes)
     criancas = sum(1 for paciente in pacientes if (calcular_idade(paciente["data_nascimento"]) or 999) < 12)
     idosos = sum(1 for paciente in pacientes if (calcular_idade(paciente["data_nascimento"]) or 0) >= 60)
@@ -579,6 +614,7 @@ def formatar_tamanho(num_bytes):
 
 
 app.add_template_filter(formatar_tamanho, "tamanho")
+app.add_template_filter(tipo_imovel_label, "tipo_imovel")
 app.add_template_filter(formatar_cpf_ou_cns, "cpf_cns")
 app.add_template_filter(formatar_data_br, "data_br")
 app.add_template_filter(formatar_telefone, "telefone")
@@ -589,7 +625,10 @@ app.add_template_filter(listar_condicao_codigos, "condicoes_codigos")
 
 @app.context_processor
 def inject_options():
-    return {"opcoes_condicoes_saude": CONDICOES_SAUDE_OPCOES}
+    return {
+        "opcoes_condicoes_saude": CONDICOES_SAUDE_OPCOES,
+        "opcoes_tipos_imovel": TIPOS_IMOVEL_OPCOES,
+    }
 
 
 @app.errorhandler(404)
@@ -895,6 +934,7 @@ def cadastrar_casa():
     if request.method == "POST":
         endereco = request.form.get("endereco", "").strip()
         numero_casa_text = request.form.get("numero_casa", "").strip()
+        tipo_imovel = normalizar_tipo_imovel(request.form.get("tipo_imovel"))
         quadra_id, quadra_error = parse_positive_int(request.form.get("quadra_id"), "a quadra", required=False)
 
         if not endereco:
@@ -947,8 +987,8 @@ def cadastrar_casa():
 
         conn = get_db_connection()
         conn.execute(
-            "INSERT INTO casas (quadra_id, numero_casa, endereco) VALUES (?, ?, ?)",
-            (quadra_id, numero_final, endereco),
+            "INSERT INTO casas (quadra_id, numero_casa, endereco, tipo_imovel) VALUES (?, ?, ?, ?)",
+            (quadra_id, numero_final, endereco, tipo_imovel),
         )
         conn.commit()
         conn.close()
@@ -985,6 +1025,7 @@ def editar_casa(casa_id):
     if request.method == "POST":
         numero_casa_text = request.form.get("numero_casa", "").strip()
         endereco = request.form.get("endereco", "").strip()
+        tipo_imovel = normalizar_tipo_imovel(request.form.get("tipo_imovel"))
         quadra_id, quadra_error = parse_positive_int(request.form.get("quadra_id"), "a quadra", required=False)
 
         if not endereco:
@@ -1006,8 +1047,8 @@ def editar_casa(casa_id):
 
         conn = get_db_connection()
         conn.execute(
-            "UPDATE casas SET quadra_id = ?, numero_casa = ?, endereco = ? WHERE id = ?",
-            (quadra_id, numero_casa, endereco, casa_id),
+            "UPDATE casas SET quadra_id = ?, numero_casa = ?, endereco = ?, tipo_imovel = ? WHERE id = ?",
+            (quadra_id, numero_casa, endereco, tipo_imovel, casa_id),
         )
         conn.commit()
         conn.close()
@@ -1500,13 +1541,17 @@ def exportar_pdf():
         lista_pacientes = pacientes_por_casa.get(casa["id"], [])
         total_da_casa = len(lista_pacientes)
 
+        tipo_casa = tipo_imovel_de(casa)
+        endereco_pdf = f"<b>Endereço:</b> {xml_escape(casa['endereco'] or '')}"
+        if tipo_casa != "domicilio":
+            endereco_pdf += f" &nbsp;|&nbsp; <b>Tipo:</b> {xml_escape(tipo_imovel_label(tipo_casa))}"
         bloco_casa = [
             [
                 Paragraph(f"Casa Nº {casa['numero_casa']}", house_style),
                 Paragraph(f"{total_da_casa} paciente(s)", house_style),
             ],
             [
-                Paragraph(f"<b>Endereço:</b> {xml_escape(casa['endereco'] or '')}", normal_style),
+                Paragraph(endereco_pdf, normal_style),
                 "",
             ],
         ]

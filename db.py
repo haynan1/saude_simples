@@ -269,6 +269,9 @@ def init_db():
     casa_columns = [row["name"] for row in conn.execute("PRAGMA table_info(casas)").fetchall()]
     if "quadra_id" not in casa_columns:
         conn.execute("ALTER TABLE casas ADD COLUMN quadra_id INTEGER")
+    if "tipo_imovel" not in casa_columns:
+        # Imóveis existentes eram todos domicílios — o default preenche o legado.
+        conn.execute("ALTER TABLE casas ADD COLUMN tipo_imovel TEXT NOT NULL DEFAULT 'domicilio'")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS configuracao (

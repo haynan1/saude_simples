@@ -29,6 +29,16 @@
     </div>
 
     <div class="form-field md-span-2">
+      <label class="form-label" for="tipo_imovel">Tipo de imóvel</label>
+      {% set tipo_atual = casa.tipo_imovel or 'domicilio' %}
+      <select class="form-input" id="tipo_imovel" name="tipo_imovel">
+        {% for opcao in opcoes_tipos_imovel %}
+          <option value="{{ opcao.codigo }}" {% if tipo_atual == opcao.codigo %}selected{% endif %}>{{ opcao.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-field md-span-2">
       <label class="form-label" for="numero_casa">Número da casa</label>
       <input class="form-input" id="numero_casa" name="numero_casa" type="number" min="1" value="{{ casa.numero_casa }}" required>
     </div>

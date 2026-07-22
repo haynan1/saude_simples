@@ -93,6 +93,46 @@ def test_casas_listadas_em_ordem_de_numeracao(logged_client):
     assert numeros == [2, 5, 9]
 
 
+def test_tipo_de_imovel_no_cadastro_e_nas_telas(logged_client):
+    logged_client.post(
+        "/casa/nova",
+        data={"endereco": "Av. Central, 100", "numero_casa": "1", "quadra_id": "", "tipo_imovel": "loja"},
+    )
+    assert "Loja" in logged_client.get("/").get_data(as_text=True)
+    assert "Loja" in logged_client.get("/casa/1").get_data(as_text=True)
+
+
+def test_tipo_de_imovel_editavel(logged_client):
+    criar_casa(logged_client)  # domicílio por padrão
+    logged_client.post(
+        "/casa/1/editar",
+        data={"endereco": "Rua A, 1", "numero_casa": "1", "quadra_id": "", "tipo_imovel": "escola"},
+    )
+    assert "Escola" in logged_client.get("/casa/1").get_data(as_text=True)
+
+
+def test_tipo_de_imovel_invalido_vira_domicilio(logged_client):
+    logged_client.post(
+        "/casa/nova",
+        data={"endereco": "Rua B, 2", "numero_casa": "1", "quadra_id": "", "tipo_imovel": "castelo"},
+    )
+    conn = db.get_db_connection()
+    tipo = conn.execute("SELECT tipo_imovel FROM casas WHERE id = 1").fetchone()["tipo_imovel"]
+    conn.close()
+    assert tipo == "domicilio"
+
+
+def test_vazias_conta_apenas_domicilios(logged_client):
+    # Domicílio sem morador = achado; terreno baldio sem morador = esperado.
+    criar_casa(logged_client, endereco="Domicílio vazio", numero="1")
+    logged_client.post(
+        "/casa/nova",
+        data={"endereco": "Terreno da esquina", "numero_casa": "2", "quadra_id": "", "tipo_imovel": "terreno_baldio"},
+    )
+    body = logged_client.get("/").get_data(as_text=True)
+    assert "1 vazia(s)" in body
+
+
 def test_numeracao_automatica_por_quadra(logged_client):
     criar_quadra(logged_client)
     criar_casa(logged_client, numero="", quadra_id="1")
