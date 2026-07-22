@@ -2980,3 +2980,20 @@ body.confirm-dialog-open { overflow: hidden; }
 .btn-danger-outline:hover { background: #fef2f2; border-color: #dc2626; }
 .theme-dark .btn-danger-outline { border-color: rgba(248, 113, 113, 0.4); color: #fca5a5; }
 .theme-dark .btn-danger-outline:hover { background: rgba(220, 38, 38, 0.12); border-color: #f87171; }
+
+/* Listas do painel: o cartão para de crescer e o excedente rola dentro dele.
+   Altura calibrada para ~10 casas (2 colunas x 5 linhas) e ~10 quadras. */
+.panel-scroll {
+  overflow-y: auto;
+  padding-right: 0.35rem;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.panel-scroll::-webkit-scrollbar { width: 8px; }
+.panel-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+.panel-scroll::-webkit-scrollbar-track { background: transparent; }
+.theme-dark .panel-scroll { scrollbar-color: #334155 transparent; }
+.theme-dark .panel-scroll::-webkit-scrollbar-thumb { background: #334155; }
+
+.house-board-scroll { max-height: 53rem; }
+.quadra-list-scroll { max-height: 45rem; }

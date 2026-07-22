@@ -91,6 +91,9 @@ def test_casas_listadas_em_ordem_de_numeracao(logged_client):
     numeros = [int(n) for n in re.findall(r"Casa (\d+)", secao_casas)]
     assert numeros == sorted(numeros)
     assert numeros == [2, 5, 9]
+    # Listas longas rolam dentro do cartão em vez de esticar a página.
+    assert "house-board-scroll" in body
+    assert "quadra-list-scroll" in body
 
 
 def test_tipo_de_imovel_no_cadastro_e_nas_telas(logged_client):

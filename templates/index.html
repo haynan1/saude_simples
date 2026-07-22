@@ -109,7 +109,7 @@
     </div>
 
     {% if casas %}
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 panel-scroll house-board-scroll">
         {% for casa in casas %}
           <article class="rounded-lg border border-slate-200 bg-slate-50 p-4 flex flex-col gap-2">
             {% set tipo = casa.tipo_imovel or 'domicilio' %}
@@ -166,7 +166,7 @@
       <a class="btn-secondary" href="{{ url_for('cadastrar_quadra') }}">Nova quadra</a>
     </div>
     {% if quadras %}
-      <div class="space-y-2">
+      <div class="space-y-2 panel-scroll quadra-list-scroll">
         {% for quadra in quadras %}
           <div class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <div class="min-w-0">
