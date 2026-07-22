@@ -288,6 +288,15 @@ def init_db():
         )
         """
     )
+    # Migração de dados: a importação do e-SUS gerava uma observação
+    # ("Importado do e-SUS[. Endereço no arquivo: ...]") — descontinuada.
+    # Limpa apenas o formato gerado; observação escrita pelo operador
+    # (qualquer outro texto) permanece intocada.
+    conn.execute(
+        "UPDATE pacientes SET observacao = '' "
+        "WHERE observacao = 'Importado do e-SUS' "
+        "OR observacao LIKE 'Importado do e-SUS. Endereço no arquivo: %'"
+    )
     # SQLite não indexa FKs automaticamente — sem estes índices, os JOINs do
     # painel e o ON DELETE CASCADE viram full scans conforme a base cresce.
     conn.execute("CREATE INDEX IF NOT EXISTS idx_casas_quadra_id ON casas(quadra_id)")

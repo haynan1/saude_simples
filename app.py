@@ -1820,19 +1820,6 @@ def parse_relatorio_esus(texto):
             or campo(linha, "telefone de contato")
         )
 
-        rua = campo(linha, "rua")
-        numero = campo(linha, "numero")
-        complemento = campo(linha, "complemento")
-        bairro = campo(linha, "bairro")
-
-        endereco_partes = []
-        if rua:
-            endereco_partes.append(f"{rua}, {numero}" if numero else rua)
-        if complemento:
-            endereco_partes.append(complemento)
-        if bairro:
-            endereco_partes.append(bairro)
-
         sexo = campo(linha, "sexo").capitalize()
         if sexo not in ("Masculino", "Feminino"):
             sexo = ""
@@ -1845,7 +1832,6 @@ def parse_relatorio_esus(texto):
                 "telefone": formatar_telefone(telefone),
                 "data_nascimento": data_nascimento,
                 "sexo": sexo,
-                "endereco": " - ".join(endereco_partes),
             }
         )
 
@@ -1854,8 +1840,8 @@ def parse_relatorio_esus(texto):
 
 def _inserir_pacientes_importados(registros):
     """Insere os registros SEM vincular a casa nenhuma — o vínculo é decisão
-    do operador, feita depois pelo "Definir casa" na lista de pacientes. O
-    endereço que veio no arquivo fica na observação, como referência.
+    do operador, feita depois pelo "Definir casa" na lista de pacientes.
+    Nenhuma observação é gerada: o cadastro entra limpo.
     Deduplicação: CPF/CNS já cadastrado, ou mesmo nome + data de nascimento."""
     conn = get_db_connection()
     try:
@@ -1874,15 +1860,11 @@ def _inserir_pacientes_importados(registros):
                 resultado["ignorados"] += 1
                 continue
 
-            observacao = "Importado do e-SUS"
-            if registro["endereco"]:
-                observacao += f". Endereço no arquivo: {registro['endereco']}"
-
             conn.execute(
                 """
                 INSERT INTO pacientes (casa_id, nome, cpf, telefone, data_nascimento, sexo,
                                        nome_pai, nome_mae, condicoes_saude, observacao)
-                VALUES (NULL, ?, ?, ?, ?, ?, '', '', '', ?)
+                VALUES (NULL, ?, ?, ?, ?, ?, '', '', '', '')
                 """,
                 (
                     registro["nome"],
@@ -1890,7 +1872,6 @@ def _inserir_pacientes_importados(registros):
                     registro["telefone"],
                     registro["data_nascimento"],
                     registro["sexo"],
-                    observacao,
                 ),
             )
             if documento:

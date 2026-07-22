@@ -375,8 +375,8 @@ def _enviar_csv(client, conteudo=CSV_ESUS):
 
 def test_importacao_esus_importa_todos_sem_casa(logged_client):
     """Importar nunca vincula a casa nem cria casas/quadras — o vínculo é
-    decisão do operador ("Definir casa"). O endereço do arquivo vai para a
-    observação como referência."""
+    decisão do operador ("Definir casa"). O cadastro entra limpo, sem
+    observação gerada."""
     resp = _enviar_csv(logged_client)
     assert resp.status_code == 302
 
@@ -396,14 +396,13 @@ def test_importacao_esus_importa_todos_sem_casa(logged_client):
     assert maria["data_nascimento"] == "1980-03-01"
     assert maria["sexo"] == "Feminino"
     assert maria["telefone"] == "(64) 99999-0001"
-    assert "Rua das Flores, 10" in maria["observacao"]  # endereço preservado
 
     joao = next(p for p in pacientes if p["nome"] == "JOAO IMPORTADO")
     assert joao["cpf"] == "700 0000 0000 0001"  # CNS quando não há CPF
     assert joao["telefone"] == "(64) 3671-0002"  # residencial como alternativa
 
-    pedro = next(p for p in pacientes if p["nome"] == "PEDRO SEM CASA")
-    assert pedro["observacao"] == "Importado do e-SUS"  # sem endereço no arquivo
+    # Cadastro entra limpo — nenhuma observação de importação gerada.
+    assert all(p["observacao"] == "" for p in pacientes)
 
 
 def test_definir_casa_de_paciente_importado(logged_client):
@@ -442,6 +441,38 @@ def test_importacao_rejeita_arquivo_sem_cabecalho(logged_client):
 def test_importacao_cria_backup_antes(logged_client):
     _enviar_csv(logged_client)
     assert any("antes_importar_pacientes" in b["nome"] for b in db.listar_backups())
+
+
+def test_migracao_limpa_observacoes_de_importacao_antigas(logged_client):
+    """Bancos que importaram antes desta versão têm a observação gerada —
+    o init_db limpa só o formato gerado, preservando texto do operador."""
+    criar_casa(logged_client)
+    conn = db.get_db_connection()
+    casos = [
+        ("Antigo Simples", "Importado do e-SUS"),
+        ("Antigo Com Endereco", "Importado do e-SUS. Endereço no arquivo: Rua X, 1 - CENTRO"),
+        ("Observacao Do Operador", "Acamado, visitar às terças"),
+        ("Editado Pelo Operador", "Importado do e-SUS mas confirmei na visita"),
+    ]
+    for nome, obs in casos:
+        conn.execute(
+            "INSERT INTO pacientes (casa_id, nome, observacao) VALUES (1, ?, ?)", (nome, obs)
+        )
+    conn.commit()
+    conn.close()
+
+    db.init_db()  # reaplica migrações
+
+    conn = db.get_db_connection()
+    observacoes = {
+        row["nome"]: row["observacao"]
+        for row in conn.execute("SELECT nome, observacao FROM pacientes").fetchall()
+    }
+    conn.close()
+    assert observacoes["Antigo Simples"] == ""
+    assert observacoes["Antigo Com Endereco"] == ""
+    assert observacoes["Observacao Do Operador"] == "Acamado, visitar às terças"
+    assert observacoes["Editado Pelo Operador"] == "Importado do e-SUS mas confirmei na visita"
 
 
 def test_restaurar_backup_de_versao_antiga_reaplica_migracoes(logged_client):
