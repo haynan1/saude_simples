@@ -159,6 +159,10 @@ def restaurar_backup(nome):
     """Restaura um backup por cima do banco ativo. O chamador é responsável
     por criar backup do estado atual ANTES de chamar."""
     _sobrescrever_banco_com(caminho_backup(nome))
+    # Backups de versões anteriores podem ter esquema antigo (ex.: pacientes
+    # sem a coluna status) — reaplica as migrações imediatamente, como na
+    # importação de banco, para as queries atuais nunca acharem coluna faltando.
+    init_db()
     logger.info("Banco restaurado a partir do backup %s", nome)
 
 
@@ -266,6 +270,10 @@ def init_db():
         conn.execute("ALTER TABLE pacientes ADD COLUMN sexo TEXT")
     if "condicoes_saude" not in columns:
         conn.execute("ALTER TABLE pacientes ADD COLUMN condicoes_saude TEXT")
+    if "status" not in columns:
+        # Quem sai não é apagado: 'mudou_se', 'fora_de_area' e 'obito' guardam
+        # o cadastro fora das contagens. Legado era todo mundo ativo.
+        conn.execute("ALTER TABLE pacientes ADD COLUMN status TEXT NOT NULL DEFAULT 'ativo'")
     casa_columns = [row["name"] for row in conn.execute("PRAGMA table_info(casas)").fetchall()]
     if "quadra_id" not in casa_columns:
         conn.execute("ALTER TABLE casas ADD COLUMN quadra_id INTEGER")

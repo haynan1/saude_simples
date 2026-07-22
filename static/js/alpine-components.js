@@ -18,16 +18,17 @@ document.addEventListener('alpine:init', () => {
     },
   }));
 
-  // Upload de banco na tela de importação: mostra o nome do arquivo escolhido
-  // e mantém o botão de envio travado até existir arquivo.
-  Alpine.data('dbImport', () => ({
+  // Upload nas telas de importação (banco .db, CSV do e-SUS): mostra o nome do
+  // arquivo escolhido e mantém o botão de envio travado até existir arquivo.
+  Alpine.data('dbImport', (placeholder) => ({
     fileName: '',
+    placeholder: placeholder || 'Escolher arquivo .db',
     onChange() {
       const file = this.$refs.input.files[0];
       this.fileName = file ? file.name : '';
     },
     get label() {
-      return this.fileName || 'Escolher arquivo .db';
+      return this.fileName || this.placeholder;
     },
     get noFile() {
       return this.fileName === '';

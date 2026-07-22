@@ -197,6 +197,72 @@
   });
 
   // ---------------------------------------------------------------------------
+  // Modal "Transferir" (paciente ou família) — um único modal por página; o
+  // botão que abre define o destino do POST e o título via data-attributes.
+  // ---------------------------------------------------------------------------
+  function transferDialog() {
+    return document.getElementById('transfer-dialog');
+  }
+
+  function openTransferDialog(trigger) {
+    const dialog = transferDialog();
+    if (!dialog) return;
+
+    const form = dialog.querySelector('[data-transfer-form]');
+    if (form) {
+      form.setAttribute('action', trigger.dataset.transferAction || '');
+      const select = form.querySelector('select[name="casa_destino_id"]');
+      if (select) select.value = '';
+    }
+    const title = dialog.querySelector('[data-transfer-title-target]');
+    if (title) title.textContent = trigger.dataset.transferTitle || 'Transferir';
+
+    dialog.hidden = false;
+    dialog.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('confirm-dialog-open');
+    requestAnimationFrame(() => dialog.classList.add('is-visible'));
+  }
+
+  function closeTransferDialog() {
+    const dialog = transferDialog();
+    if (!dialog || dialog.hidden) return;
+    dialog.classList.remove('is-visible');
+    dialog.hidden = true;
+    dialog.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('confirm-dialog-open');
+  }
+
+  document.addEventListener('click', (event) => {
+    const trigger = event.target.closest('[data-transfer-open]');
+    if (trigger) {
+      event.preventDefault();
+      openTransferDialog(trigger);
+      return;
+    }
+    if (event.target.closest('[data-transfer-close]')) {
+      closeTransferDialog();
+      return;
+    }
+    // Link dentro do modal (ex.: "Cadastrar casa"): navegação suave troca o
+    // conteúdo sem recarregar — libera o scroll travado pelo overlay.
+    if (event.target.closest('#transfer-dialog a')) {
+      document.body.classList.remove('confirm-dialog-open');
+    }
+  });
+
+  // O POST é levado pelo smooth-navigation; o modal some junto com o conteúdo
+  // antigo, então só o scroll precisa ser destravado.
+  document.addEventListener('submit', (event) => {
+    if (event.target.closest('#transfer-dialog')) {
+      document.body.classList.remove('confirm-dialog-open');
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeTransferDialog();
+  });
+
+  // ---------------------------------------------------------------------------
   // Copiar dados do paciente
   // ---------------------------------------------------------------------------
   function copyText(text) {

@@ -17,6 +17,8 @@ ROTAS_PROTEGIDAS_GET = [
     "/casa/1/editar",
     "/casa/1/paciente/novo",
     "/paciente/1/editar",
+    "/pacientes",
+    "/pacientes/importar",
     "/exportar",
     "/exportar/preview",
     "/exportar/pdf",
@@ -39,6 +41,10 @@ ROTAS_PROTEGIDAS_POST = [
     "/casa/1/paciente/novo",
     "/paciente/1/editar",
     "/paciente/1/excluir",
+    "/paciente/1/status",
+    "/paciente/1/transferir",
+    "/casa/1/transferir",
+    "/pacientes/importar",
     "/conta/senha",
 ]
 
@@ -316,6 +322,64 @@ def test_payload_gigante_rejeitado_com_413(logged_client):
     assert not db.get_db_connection().execute(
         "SELECT 1 FROM quadras"
     ).fetchone()  # nada foi gravado
+
+
+def test_next_do_status_de_paciente_nao_faz_open_redirect(logged_client):
+    criar_casa(logged_client)
+    criar_paciente(logged_client)
+    resp = logged_client.post(
+        "/paciente/1/status",
+        data={"status": "mudou_se", "next": "https://evil.example.com"},
+    )
+    assert resp.status_code == 302
+    assert "evil.example.com" not in resp.headers["Location"]
+
+    resp = logged_client.post(
+        "/paciente/1/transferir",
+        data={"casa_destino_id": "1", "next": "//evil.example.com"},
+    )
+    assert resp.status_code == 302
+    assert "evil.example.com" not in resp.headers["Location"]
+
+
+def test_xss_via_csv_importado_escapado(logged_client):
+    from io import BytesIO
+
+    csv_malicioso = (
+        "Nome;Data de nascimento;Sexo;CPF;CNS;Telefone celular;Telefone residencial;"
+        "Telefone de contato;Rua;Número;Complemento;Bairro\n"
+        "<script>alert('xss')</script>;01/01/1990;Feminino;123.456.789-01;-;-;-;-;"
+        "<img src=x onerror=alert(1)>;1;-;-\n"
+    )
+    resp = logged_client.post(
+        "/pacientes/importar",
+        data={"arquivo": (BytesIO(csv_malicioso.encode("cp1252")), "r.csv")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 302
+
+    body = logged_client.get("/pacientes").get_data(as_text=True)
+    assert "<script>alert('xss')</script>" not in body
+    assert "&lt;script&gt;" in body
+    body_casa = logged_client.get("/").get_data(as_text=True)
+    assert "<img src=x onerror" not in body_casa
+
+
+def test_csv_gigante_rejeitado_com_413(logged_client):
+    from io import BytesIO
+
+    # Acima do limite de 20MB da rota: rejeitado antes do parsing.
+    resp = logged_client.post(
+        "/pacientes/importar",
+        data={"arquivo": (BytesIO(b"x" * (21 * 1024 * 1024)), "grande.csv")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 302  # handler amigável
+    assert "/pacientes/importar" in resp.headers["Location"]
+    conn = db.get_db_connection()
+    total = conn.execute("SELECT COUNT(*) AS c FROM pacientes").fetchone()["c"]
+    conn.close()
+    assert total == 0
 
 
 def test_pagina_login_nao_referencia_cdn(client):

@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% from "_status_paciente.html" import badge_status %}
+{% block title %}Pacientes{% endblock %}
+
+{% block content %}
+<!-- Cabeçalho -->
+<div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-8">
+  <div>
+    <p class="text-xs font-bold uppercase tracking-wider text-blue-600 mb-1">Cadastro do território</p>
+    <h1 class="text-2xl font-bold tracking-tight text-slate-900">Pacientes</h1>
+    <p class="text-sm text-slate-500 mt-1">Todos os cadastros — inclusive quem se mudou, saiu da área ou veio a óbito. Nada se perde.</p>
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    <a href="{{ url_for('importar_pacientes') }}" class="btn-secondary">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+      Importar e-SUS
+    </a>
+  </div>
+</div>
+
+<!-- Situação cadastral: contagens que também filtram -->
+<div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mb-8">
+  <a href="{{ url_for('listar_pacientes') }}"
+     class="rounded-xl border p-4 transition-colors {{ 'border-blue-200 bg-blue-50' if not status_filtro else 'border-slate-200 bg-white hover:bg-slate-50' }}">
+    <p class="text-xs font-semibold uppercase tracking-wide {{ 'text-blue-700' if not status_filtro else 'text-slate-500' }}">Todos</p>
+    <p class="text-2xl font-bold mt-1 {{ 'text-blue-900' if not status_filtro else 'text-slate-900' }}">{{ total_geral }}</p>
+    <p class="text-xs mt-0.5 {{ 'text-blue-700' if not status_filtro else 'text-slate-500' }}">Cadastros guardados</p>
+  </a>
+  <a href="{{ url_for('listar_pacientes', status='ativo') }}"
+     class="rounded-xl border p-4 transition-colors {{ 'border-green-200 bg-green-50' if status_filtro == 'ativo' else 'border-slate-200 bg-white hover:bg-slate-50' }}">
+    <p class="text-xs font-semibold uppercase tracking-wide {{ 'text-green-700' if status_filtro == 'ativo' else 'text-slate-500' }}">Ativos</p>
+    <p class="text-2xl font-bold mt-1 {{ 'text-green-700' if status_filtro == 'ativo' else 'text-slate-900' }}">{{ contagem_status['ativo'] }}</p>
+    <p class="text-xs mt-0.5 {{ 'text-green-700' if status_filtro == 'ativo' else 'text-slate-500' }}">Moram no território</p>
+  </a>
+  <a href="{{ url_for('listar_pacientes', status='mudou_se') }}"
+     class="rounded-xl border p-4 transition-colors {{ 'border-amber-200 bg-amber-50' if status_filtro == 'mudou_se' else 'border-slate-200 bg-white hover:bg-slate-50' }}">
+    <p class="text-xs font-semibold uppercase tracking-wide {{ 'text-amber-700' if status_filtro == 'mudou_se' else 'text-slate-500' }}">Mudou-se</p>
+    <p class="text-2xl font-bold mt-1 {{ 'text-amber-700' if status_filtro == 'mudou_se' else 'text-slate-900' }}">{{ contagem_status['mudou_se'] }}</p>
+    <p class="text-xs mt-0.5 {{ 'text-amber-700' if status_filtro == 'mudou_se' else 'text-slate-500' }}">Saíram do endereço</p>
+  </a>
+  <a href="{{ url_for('listar_pacientes', status='fora_de_area') }}"
+     class="rounded-xl border p-4 transition-colors {{ 'border-slate-200 bg-slate-100' if status_filtro == 'fora_de_area' else 'border-slate-200 bg-white hover:bg-slate-50' }}">
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Fora de Área</p>
+    <p class="text-2xl font-bold text-slate-900 mt-1">{{ contagem_status['fora_de_area'] }}</p>
+    <p class="text-xs text-slate-500 mt-0.5">Fora da cobertura</p>
+  </a>
+  <a href="{{ url_for('listar_pacientes', status='obito') }}"
+     class="rounded-xl border p-4 transition-colors {{ 'border-red-200 bg-red-50' if status_filtro == 'obito' else 'border-slate-200 bg-white hover:bg-slate-50' }}">
+    <p class="text-xs font-semibold uppercase tracking-wide {{ 'text-red-700' if status_filtro == 'obito' else 'text-slate-500' }}">Óbito</p>
+    <p class="text-2xl font-bold mt-1 {{ 'text-red-700' if status_filtro == 'obito' else 'text-slate-900' }}">{{ contagem_status['obito'] }}</p>
+    <p class="text-xs mt-0.5 {{ 'text-red-700' if status_filtro == 'obito' else 'text-slate-500' }}">Registros em memória</p>
+  </a>
+</div>
+
+<!-- Filtros -->
+<section class="rounded-xl border border-slate-200 bg-white p-5 mb-6">
+  <div class="mb-3">
+    <h2 class="text-sm font-bold text-slate-900">Filtrar pacientes</h2>
+    <p class="text-xs text-slate-500">Combine busca por nome/CPF/CNS, situação cadastral e quadra.</p>
+  </div>
+  <form method="get" action="{{ url_for('listar_pacientes') }}" role="search" class="flex flex-col md:flex-row gap-2">
+    <input
+      class="form-input flex-1"
+      id="busca"
+      type="search"
+      name="busca"
+      value="{{ busca }}"
+      placeholder="Nome, CPF ou CNS"
+      aria-label="Buscar paciente"
+      autocomplete="off"
+    >
+    <select class="form-input md:max-w-[12rem]" name="status" aria-label="Filtrar por situação">
+      <option value="">Todas as situações</option>
+      {% for opcao in opcoes_status_paciente %}
+        <option value="{{ opcao.codigo }}" {% if status_filtro == opcao.codigo %}selected{% endif %}>{{ opcao.label }}</option>
+      {% endfor %}
+    </select>
+    <select class="form-input md:max-w-[14rem]" name="quadra" aria-label="Filtrar por quadra">
+      <option value="">Todas as quadras</option>
+      <option value="0" {% if quadra_filtro == '0' %}selected{% endif %}>Sem quadra</option>
+      {% for quadra in quadras %}
+        <option value="{{ quadra.id }}" {% if quadra_filtro == quadra.id|string %}selected{% endif %}>Quadra {{ quadra.numero_quadra }}</option>
+      {% endfor %}
+    </select>
+    <div class="flex gap-2">
+      <button class="btn-primary" type="submit">Filtrar</button>
+      {% if filtro_ativo %}
+        <a class="btn-secondary" href="{{ url_for('listar_pacientes') }}">Limpar</a>
+      {% endif %}
+    </div>
+  </form>
+</section>
+
+<!-- Lista -->
+{% if pacientes %}
+  <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+    <div class="flex items-center justify-between gap-3 px-5 pt-4 pb-3">
+      <div>
+        <h2 class="text-sm font-bold text-slate-900">Lista de pacientes</h2>
+        {% if filtro_ativo %}
+          <p class="text-xs text-blue-700 font-semibold">{{ pacientes|length }} de {{ total_geral }} — filtro ativo</p>
+        {% else %}
+          <p class="text-xs text-slate-500">{{ pacientes|length }} cadastro(s)</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-slate-50 text-left">
+            <th class="px-4 py-3 font-semibold text-slate-600">Nome</th>
+            <th class="px-4 py-3 font-semibold text-slate-600">Casa</th>
+            <th class="px-4 py-3 font-semibold text-slate-600">CPF/CNS</th>
+            <th class="px-4 py-3 font-semibold text-slate-600">Nascimento</th>
+            <th class="px-4 py-3 font-semibold text-slate-600">Situação</th>
+            <th class="px-4 py-3 font-semibold text-slate-600 text-right">Ações</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for paciente in pacientes %}
+            {% set status = paciente|status_codigo %}
+            <tr class="table-row hover:bg-slate-50">
+              <td class="px-4 py-3">
+                <p class="font-semibold text-slate-900">{{ paciente.nome }}</p>
+                {% if paciente.telefone %}
+                  <p class="text-xs text-slate-500">{{ paciente.telefone|telefone }}</p>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap">
+                {% if paciente.casa_id %}
+                  <a class="text-blue-600 hover:underline font-semibold" href="{{ url_for('detalhes_casa', casa_id=paciente.casa_id) }}">Casa {{ paciente.numero_casa }}</a>
+                  <p class="text-xs text-slate-500">{{ 'Quadra ' ~ paciente.numero_quadra if paciente.numero_quadra else 'Sem quadra' }}</p>
+                {% else %}
+                  <span class="text-slate-400">—</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ paciente.cpf|cpf_cns }}</td>
+              <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ paciente.data_nascimento|data_br }}</td>
+              <td class="px-4 py-3 whitespace-nowrap">{{ badge_status(status) }}</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center justify-end gap-1.5 flex-wrap" role="group" aria-label="Ações do paciente {{ paciente.nome }}">
+                  {% if status == 'ativo' %}
+                    <form method="post" action="{{ url_for('alterar_status_paciente', paciente_id=paciente.id) }}"
+                          data-confirm="O cadastro fica guardado como “Mudou-se”, fora das contagens do território."
+                          data-confirm-title="{{ paciente.nome }} mudou-se?">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="status" value="mudou_se">
+                      <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                      <button class="btn-secondary house-tile-btn" type="submit" title="Marcar {{ paciente.nome }} como Mudou-se">Mudou-se</button>
+                    </form>
+                    <form method="post" action="{{ url_for('alterar_status_paciente', paciente_id=paciente.id) }}"
+                          data-confirm="O cadastro fica guardado como “Fora de Área”, fora das contagens do território."
+                          data-confirm-title="{{ paciente.nome }} está fora de área?">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="status" value="fora_de_area">
+                      <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                      <button class="btn-secondary house-tile-btn" type="submit" title="Marcar {{ paciente.nome }} como Fora de Área">Fora de área</button>
+                    </form>
+                    <form method="post" action="{{ url_for('alterar_status_paciente', paciente_id=paciente.id) }}"
+                          data-confirm="O cadastro fica guardado como “Óbito”, fora das contagens do território."
+                          data-confirm-title="Registrar óbito de {{ paciente.nome }}?">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="status" value="obito">
+                      <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                      <button class="btn-danger-outline house-tile-btn" type="submit" title="Registrar óbito de {{ paciente.nome }}">Óbito</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{{ url_for('alterar_status_paciente', paciente_id=paciente.id) }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="status" value="ativo">
+                      <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                      <button class="btn-secondary house-tile-btn" type="submit" title="Reativar {{ paciente.nome }}">Reativar</button>
+                    </form>
+                  {% endif %}
+                  {% if status != 'obito' %}
+                    <button
+                      class="btn-secondary house-tile-btn"
+                      type="button"
+                      data-transfer-open
+                      data-transfer-action="{{ url_for('transferir_paciente', paciente_id=paciente.id) }}"
+                      data-transfer-title="Transferir {{ paciente.nome }}"
+                      title="Transferir {{ paciente.nome }} para outra casa"
+                    >Transferir</button>
+                  {% endif %}
+                  <a class="btn-secondary house-tile-btn" href="{{ url_for('editar_paciente', paciente_id=paciente.id) }}"
+                     title="Editar {{ paciente.nome }}" aria-label="Editar {{ paciente.nome }}">Editar</a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% elif filtro_ativo %}
+  <div class="rounded-xl border border-slate-200 bg-white flex flex-col items-center justify-center text-center py-14">
+    <h3 class="text-sm font-bold text-slate-900 mb-1">Nenhum paciente corresponde ao filtro</h3>
+    <p class="text-sm text-slate-500 mb-4">Ajuste a busca, a situação ou a quadra — ou limpe o filtro.</p>
+    <a class="btn-secondary" href="{{ url_for('listar_pacientes') }}">Limpar filtro</a>
+  </div>
+{% else %}
+  <div class="rounded-xl border border-slate-200 bg-white flex flex-col items-center justify-center text-center py-14">
+    <div class="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center mb-3">
+      <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+    </div>
+    <h3 class="text-sm font-bold text-slate-900 mb-1">Nenhum paciente cadastrado</h3>
+    <p class="text-sm text-slate-500 mb-4">Os pacientes são cadastrados a partir da casa onde moram.</p>
+    <a class="btn-primary" href="{{ url_for('index') }}">Ir para o painel</a>
+  </div>
+{% endif %}
+
+{% include "_modal_transferencia.html" %}
+{% endblock %}

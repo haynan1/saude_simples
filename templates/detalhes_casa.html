@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_status_paciente.html" import badge_status %}
 {% block title %}Casa {{ casa.numero_casa }}{% endblock %}
 
 {% block content %}
@@ -32,6 +33,16 @@
   </div>
   <div class="flex flex-wrap items-center gap-2">
     <a class="btn-primary" href="{{ url_for('cadastrar_paciente', casa_id=casa.id) }}">Cadastrar paciente</a>
+    {% if pacientes %}
+      <button
+        class="btn-secondary"
+        type="button"
+        data-transfer-open
+        data-transfer-action="{{ url_for('transferir_familia', casa_id=casa.id) }}"
+        data-transfer-title="Transferir família da casa {{ casa.numero_casa }}"
+        title="Transferir todos os moradores ativos para outra casa"
+      >Transferir família</button>
+    {% endif %}
     <a class="btn-secondary" href="{{ url_for('editar_casa', casa_id=casa.id) }}">Editar casa</a>
   </div>
 </div>
@@ -83,6 +94,15 @@
                   >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
                   </button>
+                  <button
+                    class="btn-secondary house-tile-btn"
+                    type="button"
+                    data-transfer-open
+                    data-transfer-action="{{ url_for('transferir_paciente', paciente_id=paciente.id) }}"
+                    data-transfer-title="Transferir {{ paciente.nome }}"
+                    title="Transferir {{ paciente.nome }} para outra casa"
+                    aria-label="Transferir {{ paciente.nome }} para outra casa"
+                  >Transferir</button>
                   <a
                     class="btn-secondary house-tile-btn"
                     href="{{ url_for('editar_paciente', paciente_id=paciente.id) }}"
@@ -138,4 +158,51 @@
     <a class="btn-primary" href="{{ url_for('cadastrar_paciente', casa_id=casa.id) }}">Cadastrar paciente</a>
   </div>
 {% endif %}
+
+{% if pacientes_inativos %}
+  <section class="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+    <div class="mb-4">
+      <h2 class="text-sm font-bold text-slate-900">Registros guardados</h2>
+      <p class="text-xs text-slate-500">Quem se mudou, saiu da área ou veio a óbito — o cadastro é preservado, fora das contagens da casa.</p>
+    </div>
+    <div class="space-y-2">
+      {% for paciente in pacientes_inativos %}
+        {% set status = paciente|status_codigo %}
+        <div class="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <p class="text-sm font-semibold text-slate-900">{{ paciente.nome }}</p>
+              {{ badge_status(status) }}
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">
+              {{ paciente.cpf|cpf_cns }}{% if paciente.data_nascimento %} · Nascimento {{ paciente.data_nascimento|data_br }}{% endif %}
+            </p>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0" role="group" aria-label="Ações do registro de {{ paciente.nome }}">
+            <form method="post" action="{{ url_for('alterar_status_paciente', paciente_id=paciente.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="status" value="ativo">
+              <input type="hidden" name="next" value="{{ request.path }}">
+              <button class="btn-secondary house-tile-btn" type="submit" title="Reativar {{ paciente.nome }}">Reativar</button>
+            </form>
+            {% if status != 'obito' %}
+              <button
+                class="btn-secondary house-tile-btn"
+                type="button"
+                data-transfer-open
+                data-transfer-action="{{ url_for('transferir_paciente', paciente_id=paciente.id) }}"
+                data-transfer-title="Transferir {{ paciente.nome }}"
+                title="Transferir {{ paciente.nome }} para outra casa"
+              >Transferir</button>
+            {% endif %}
+            <a class="btn-secondary house-tile-btn" href="{{ url_for('editar_paciente', paciente_id=paciente.id) }}"
+               title="Editar {{ paciente.nome }}" aria-label="Editar {{ paciente.nome }}">Editar</a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+
+{% include "_modal_transferencia.html" %}
 {% endblock %}

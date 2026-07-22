@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Importar pacientes{% endblock %}
+
+{% block content %}
+<!-- Cabeçalho -->
+<div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-8">
+  <div>
+    <a href="{{ url_for('listar_pacientes') }}" class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline mb-2">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      Pacientes
+    </a>
+    <p class="text-xs font-bold uppercase tracking-wider text-blue-600 mb-1">Cadastro em lote</p>
+    <h1 class="text-2xl font-bold tracking-tight text-slate-900">Importar pacientes do e-SUS</h1>
+    <p class="text-sm text-slate-500 mt-1">Envie o relatório CSV do e-SUS APS e todos os pacientes são cadastrados de uma vez, com casas e quadras criadas a partir dos endereços.</p>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <!-- Como funciona -->
+  <section class="rounded-xl border border-slate-200 bg-white">
+    <div class="section-heading">
+      <div>
+        <h2>Como funciona</h2>
+        <p>O arquivo aceito é o CSV do relatório <strong>Acompanhamento de condições de saúde</strong>, exportado do e-SUS APS.</p>
+      </div>
+      <span class="section-badge">Seguro</span>
+    </div>
+    <div class="px-6 py-5">
+      <ul class="space-y-3 text-sm text-slate-600">
+        <li class="flex gap-3">
+          <span class="w-6 h-6 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">1</span>
+          <span>São lidos <strong>nome, nascimento, sexo, CPF/CNS, telefone e endereço</strong> de cada paciente.</span>
+        </li>
+        <li class="flex gap-3">
+          <span class="w-6 h-6 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">2</span>
+          <span>Pacientes com o mesmo endereço entram na <strong>mesma casa</strong>; a quadra é reconhecida pelo complemento (ex.: “QD 27 LT 01”). Casas e quadras que não existem são criadas.</span>
+        </li>
+        <li class="flex gap-3">
+          <span class="w-6 h-6 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">3</span>
+          <span>Quem já está no sistema (mesmo CPF/CNS, ou mesmo nome e nascimento) é <strong>ignorado</strong> — importar de novo não duplica ninguém.</span>
+        </li>
+        <li class="flex gap-3">
+          <span class="w-6 h-6 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">4</span>
+          <span>Um <strong>backup automático</strong> é criado antes de qualquer alteração — dá para restaurar em Banco de dados.</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Upload -->
+  <section class="rounded-xl border border-slate-200 bg-white">
+    <div class="section-heading">
+      <div>
+        <h2>Enviar arquivo</h2>
+        <p>Somente adiciona cadastros — nada é apagado ou substituído.</p>
+      </div>
+      <span class="section-badge">CSV do e-SUS</span>
+    </div>
+    <div class="px-6 py-5">
+      <form
+        method="post"
+        action="{{ url_for('importar_pacientes') }}"
+        enctype="multipart/form-data"
+        x-data="dbImport('Escolher arquivo .csv')"
+        data-confirm="Os pacientes do arquivo serão cadastrados no sistema. Um backup será criado antes. Continuar?"
+        data-confirm-title="Importar pacientes do e-SUS?"
+        data-confirm-label="Sim, importar"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="file-drop">
+          <svg class="file-drop-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          <span x-text="label">Escolher arquivo .csv</span>
+          <small>Relatório de acompanhamento de condições de saúde do e-SUS APS</small>
+          <input type="file" name="arquivo" accept=".csv,text/csv" class="sr-only" x-ref="input" @change="onChange">
+        </label>
+        <button class="btn-primary w-full" type="submit" :disabled="noFile">Importar pacientes</button>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

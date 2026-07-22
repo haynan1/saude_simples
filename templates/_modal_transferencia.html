@@ -1,0 +1,50 @@
+{# Modal único de transferência (paciente ou família inteira). Quem abre é um
+   botão [data-transfer-open] com data-transfer-action (destino do POST) e
+   data-transfer-title — o app.js preenche o form antes de exibir.
+   Requer `casas_destino` no contexto da página. #}
+<div id="transfer-dialog" class="filter-dialog" hidden aria-hidden="true">
+  <div class="filter-dialog-backdrop" data-transfer-close></div>
+  <section class="filter-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="transfer-dialog-title">
+    <form method="post" action="" data-transfer-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+      <header class="filter-dialog-head">
+        <div>
+          <p class="filter-dialog-kicker">Transferência</p>
+          <h2 id="transfer-dialog-title" class="filter-dialog-title" data-transfer-title-target>Transferir</h2>
+          <p class="filter-dialog-sub">Escolha a casa de destino — o endereço do cadastro muda e o morador passa a contar nela.</p>
+        </div>
+        <button type="button" class="a11y-close" data-transfer-close aria-label="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </header>
+
+      <div class="filter-dialog-body">
+        {% if casas_destino %}
+          <label class="form-label" for="casa_destino_id">Casa de destino</label>
+          <select class="form-input" name="casa_destino_id" id="casa_destino_id" required>
+            <option value="">Selecione a casa</option>
+            {% for casa in casas_destino %}
+              <option value="{{ casa.id }}">
+                Casa {{ casa.numero_casa }}{% if casa.numero_quadra %} · Quadra {{ casa.numero_quadra }}{% endif %} — {{ casa.endereco }}
+              </option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <p class="text-sm text-slate-500">Nenhuma outra casa cadastrada. Cadastre a casa de destino primeiro.</p>
+        {% endif %}
+      </div>
+
+      <footer class="filter-dialog-foot">
+        <button type="button" class="btn-secondary" data-transfer-close>Cancelar</button>
+        {% if casas_destino %}
+          <button type="submit" class="btn-primary">Transferir</button>
+        {% else %}
+          <a class="btn-primary" href="{{ url_for('cadastrar_casa') }}">Cadastrar casa</a>
+        {% endif %}
+      </footer>
+    </form>
+  </section>
+</div>

@@ -1,5 +1,7 @@
+import csv
 import logging
 import os
+import re
 import secrets
 import sqlite3
 import tempfile
@@ -77,20 +79,29 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get(
 # antes de qualquer parsing.
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
 
-# Exceção única: importação de banco recebe um arquivo .db real.
+# Exceções: importação de banco recebe um arquivo .db real; importação de
+# pacientes recebe o CSV do e-SUS (grande em áreas com muitos cadastros).
 IMPORT_MAX_BYTES = 200 * 1024 * 1024
+CSV_IMPORT_MAX_BYTES = 20 * 1024 * 1024
 
 
 @app.before_request
 def ajustar_limite_de_upload():
     if request.path == "/banco/importar":
         request.max_content_length = IMPORT_MAX_BYTES
+    elif request.path == "/pacientes/importar":
+        request.max_content_length = CSV_IMPORT_MAX_BYTES
 
 
 @app.errorhandler(RequestEntityTooLarge)
 def arquivo_grande_demais(_error):
     flash("O arquivo enviado excede o tamanho máximo permitido.", "danger")
-    destino = "banco" if request.path.startswith("/banco") else "index"
+    if request.path.startswith("/banco"):
+        destino = "banco"
+    elif request.path.startswith("/pacientes"):
+        destino = "importar_pacientes"
+    else:
+        destino = "index"
     return redirect(url_for(destino))
 
 APP_VERSION = "2.0.0"
@@ -285,6 +296,38 @@ CONDICOES_SAUDE_OPCOES = [
     {"codigo": "outras_condicoes", "label": "Outras condições de saúde"},
 ]
 CONDICOES_SAUDE = [opcao["label"] for opcao in CONDICOES_SAUDE_OPCOES]
+
+# Situação cadastral do paciente. Quem se muda ou falece não é excluído: o
+# cadastro é preservado com o motivo da saída, fora das contagens do território.
+STATUS_PACIENTE_OPCOES = [
+    {"codigo": "ativo", "label": "Ativo"},
+    {"codigo": "mudou_se", "label": "Mudou-se"},
+    {"codigo": "fora_de_area", "label": "Fora de Área"},
+    {"codigo": "obito", "label": "Óbito"},
+]
+STATUS_PACIENTE_POR_CODIGO = {opcao["codigo"]: opcao["label"] for opcao in STATUS_PACIENTE_OPCOES}
+
+# Nos JOINs/WHEREs: COALESCE cobre bancos importados onde a coluna possa
+# existir sem NOT NULL — NULL conta como ativo, igual ao legado.
+SQL_PACIENTE_ATIVO = "COALESCE(pacientes.status, 'ativo') = 'ativo'"
+
+
+def normalizar_status_paciente(value):
+    value = str(value or "").strip()
+    return value if value in STATUS_PACIENTE_POR_CODIGO else "ativo"
+
+
+def status_paciente_label(value):
+    return STATUS_PACIENTE_POR_CODIGO.get(str(value or "").strip(), "Ativo")
+
+
+def status_paciente_de(paciente):
+    """Lê o status de uma linha de paciente tolerando bancos antigos importados
+    (coluna pode não existir até o init_db rodar) e valores nulos."""
+    try:
+        return normalizar_status_paciente(paciente["status"])
+    except (IndexError, KeyError):
+        return "ativo"
 
 
 def get_next_house_number(quadra_id=None):
@@ -581,16 +624,18 @@ def carregar_dados_relatorio(condicoes_selecionadas=None, filtro_sem_selecao=Fal
     condicoes_selecionadas = condicoes_selecionadas or []
     conn = get_db_connection()
     casas = conn.execute(
-        """
+        f"""
         SELECT casas.*, quadras.numero_quadra, COUNT(pacientes.id) AS total_pacientes
         FROM casas
         LEFT JOIN quadras ON quadras.id = casas.quadra_id
-        LEFT JOIN pacientes ON pacientes.casa_id = casas.id
+        LEFT JOIN pacientes ON pacientes.casa_id = casas.id AND {SQL_PACIENTE_ATIVO}
         GROUP BY casas.id
         ORDER BY quadras.numero_quadra IS NULL, quadras.numero_quadra, casas.numero_casa, casas.id
         """
     ).fetchall()
-    pacientes = conn.execute("SELECT * FROM pacientes ORDER BY nome").fetchall()
+    pacientes = conn.execute(
+        f"SELECT * FROM pacientes WHERE {SQL_PACIENTE_ATIVO} ORDER BY nome"
+    ).fetchall()
     conn.close()
 
     if condicoes_selecionadas:
@@ -632,6 +677,8 @@ app.add_template_filter(formatar_telefone, "telefone")
 app.add_template_filter(whatsapp_link, "whatsapp")
 app.add_template_filter(listar_condicoes, "condicoes_lista")
 app.add_template_filter(listar_condicao_codigos, "condicoes_codigos")
+app.add_template_filter(status_paciente_label, "status_paciente")
+app.add_template_filter(status_paciente_de, "status_codigo")
 
 
 @app.context_processor
@@ -640,12 +687,48 @@ def inject_options():
         "opcoes_condicoes_saude": CONDICOES_SAUDE_OPCOES,
         "opcoes_tipos_imovel": TIPOS_IMOVEL_OPCOES,
         "tipos_imovel_residenciais": TIPOS_IMOVEL_RESIDENCIAIS,
+        "opcoes_status_paciente": STATUS_PACIENTE_OPCOES,
     }
 
 
 @app.errorhandler(404)
 def pagina_nao_encontrada(_error):
     return render_template("erro_404.html"), 404
+
+
+def paciente_com_documento(documento_digitos, excluir_id=None):
+    """Paciente existente com o mesmo CPF/CNS (comparação por dígitos, já que
+    o campo é armazenado formatado). Garante que um documento identifique um
+    único paciente — mesma regra da importação do e-SUS."""
+    if not documento_digitos:
+        return None
+
+    conn = get_db_connection()
+    rows = conn.execute("SELECT id, nome, cpf FROM pacientes").fetchall()
+    conn.close()
+    for row in rows:
+        if excluir_id is not None and row["id"] == excluir_id:
+            continue
+        if apenas_digitos(row["cpf"]) == documento_digitos:
+            return row
+    return None
+
+
+def get_casas_para_transferencia(excluir_casa_id=None):
+    """Casas candidatas a destino de transferência, na mesma ordem do painel."""
+    conn = get_db_connection()
+    casas = conn.execute(
+        """
+        SELECT casas.id, casas.numero_casa, casas.endereco, quadras.numero_quadra
+        FROM casas
+        LEFT JOIN quadras ON quadras.id = casas.quadra_id
+        ORDER BY quadras.numero_quadra IS NULL, quadras.numero_quadra, casas.numero_casa, casas.id
+        """
+    ).fetchall()
+    conn.close()
+    if excluir_casa_id is None:
+        return casas
+    return [casa for casa in casas if casa["id"] != excluir_casa_id]
 
 
 def get_house_or_404(casa_id):
@@ -835,17 +918,19 @@ def index():
         """
     ).fetchall()
     casas = conn.execute(
-        """
+        f"""
         SELECT casas.*, quadras.numero_quadra, COUNT(pacientes.id) AS total_pacientes
         FROM casas
         LEFT JOIN quadras ON quadras.id = casas.quadra_id
-        LEFT JOIN pacientes ON pacientes.casa_id = casas.id
+        LEFT JOIN pacientes ON pacientes.casa_id = casas.id AND {SQL_PACIENTE_ATIVO}
         GROUP BY casas.id
         ORDER BY casas.numero_casa IS NULL, casas.numero_casa, quadras.numero_quadra IS NULL,
                  quadras.numero_quadra, casas.id
         """
     ).fetchall()
-    pacientes = conn.execute("SELECT sexo, data_nascimento, condicoes_saude FROM pacientes").fetchall()
+    pacientes = conn.execute(
+        f"SELECT sexo, data_nascimento, condicoes_saude FROM pacientes WHERE {SQL_PACIENTE_ATIVO}"
+    ).fetchall()
     pacientes_busca = []
     if busca:
         todos_pacientes = conn.execute(
@@ -1054,12 +1139,20 @@ def detalhes_casa(casa_id):
         return redirect(url_for("index"))
 
     conn = get_db_connection()
-    pacientes = conn.execute(
+    moradores = conn.execute(
         "SELECT * FROM pacientes WHERE casa_id = ? ORDER BY nome",
         (casa_id,),
     ).fetchall()
     conn.close()
-    return render_template("detalhes_casa.html", casa=casa, pacientes=pacientes)
+    pacientes = [p for p in moradores if status_paciente_de(p) == "ativo"]
+    pacientes_inativos = [p for p in moradores if status_paciente_de(p) != "ativo"]
+    return render_template(
+        "detalhes_casa.html",
+        casa=casa,
+        pacientes=pacientes,
+        pacientes_inativos=pacientes_inativos,
+        casas_destino=get_casas_para_transferencia(excluir_casa_id=casa_id),
+    )
 
 
 @app.route("/casa/<int:casa_id>/editar", methods=["GET", "POST"])
@@ -1137,6 +1230,15 @@ def cadastrar_paciente(casa_id):
             flash("Informe o nome do paciente.", "danger")
             return render_template("cadastrar_paciente.html", casa=casa, paciente=request.form)
 
+        duplicado = paciente_com_documento(apenas_digitos(request.form.get("cpf", "")))
+        if duplicado:
+            flash(
+                f"Este CPF/CNS já está cadastrado para {duplicado['nome']}. "
+                "Cada documento identifica um único paciente — localize o cadastro na página Pacientes.",
+                "danger",
+            )
+            return render_template("cadastrar_paciente.html", casa=casa, paciente=request.form)
+
         conn = get_db_connection()
         conn.execute(
             """
@@ -1183,6 +1285,18 @@ def editar_paciente(paciente_id):
         nome = request.form.get("nome", "").strip()
         if not nome:
             flash("Informe o nome do paciente.", "danger")
+            conn.close()
+            return render_template("editar_paciente.html", paciente=paciente, casa=casa)
+
+        duplicado = paciente_com_documento(
+            apenas_digitos(request.form.get("cpf", "")), excluir_id=paciente_id
+        )
+        if duplicado:
+            flash(
+                f"Este CPF/CNS já está cadastrado para {duplicado['nome']}. "
+                "Cada documento identifica um único paciente.",
+                "danger",
+            )
             conn.close()
             return render_template("editar_paciente.html", paciente=paciente, casa=casa)
 
@@ -1240,6 +1354,481 @@ def excluir_paciente(paciente_id):
     conn.close()
     flash("Paciente excluído com sucesso.", "success")
     return redirect(url_for("detalhes_casa", casa_id=casa_id))
+
+
+@app.route("/pacientes")
+@login_required
+def listar_pacientes():
+    busca = request.args.get("busca", "").strip()
+    status_filtro = request.args.get("status", "").strip()
+    if status_filtro not in STATUS_PACIENTE_POR_CODIGO:
+        status_filtro = ""
+    quadra_filtro = request.args.get("quadra", "").strip()
+
+    conn = get_db_connection()
+    pacientes = conn.execute(
+        """
+        SELECT pacientes.*, casas.numero_casa, casas.endereco, casas.quadra_id, quadras.numero_quadra
+        FROM pacientes
+        LEFT JOIN casas ON casas.id = pacientes.casa_id
+        LEFT JOIN quadras ON quadras.id = casas.quadra_id
+        ORDER BY pacientes.nome COLLATE NOCASE, pacientes.id
+        """
+    ).fetchall()
+    quadras = conn.execute("SELECT * FROM quadras ORDER BY numero_quadra, id").fetchall()
+    conn.close()
+
+    # Contagens sempre sobre o cadastro inteiro — o filtro recorta só a lista.
+    total_geral = len(pacientes)
+    contagem_status = {opcao["codigo"]: 0 for opcao in STATUS_PACIENTE_OPCOES}
+    for paciente in pacientes:
+        contagem_status[status_paciente_de(paciente)] += 1
+
+    filtrados = pacientes
+    if status_filtro:
+        filtrados = [p for p in filtrados if status_paciente_de(p) == status_filtro]
+    if quadra_filtro == "0":
+        filtrados = [p for p in filtrados if p["quadra_id"] is None]
+    elif quadra_filtro.isdigit():
+        filtrados = [p for p in filtrados if p["quadra_id"] == int(quadra_filtro)]
+    else:
+        quadra_filtro = ""
+    if busca:
+        filtrados = [p for p in filtrados if paciente_corresponde_busca(p, busca)]
+
+    return render_template(
+        "pacientes.html",
+        pacientes=filtrados,
+        total_geral=total_geral,
+        contagem_status=contagem_status,
+        quadras=quadras,
+        casas_destino=get_casas_para_transferencia(),
+        busca=busca,
+        status_filtro=status_filtro,
+        quadra_filtro=quadra_filtro,
+        filtro_ativo=bool(busca or status_filtro or quadra_filtro),
+    )
+
+
+@app.route("/paciente/<int:paciente_id>/status", methods=["POST"])
+@login_required
+def alterar_status_paciente(paciente_id):
+    destino = proxima_url_segura(request.form.get("next"))
+    status = request.form.get("status", "").strip()
+    if status not in STATUS_PACIENTE_POR_CODIGO:
+        flash("Situação inválida.", "danger")
+        return redirect(destino)
+
+    conn = get_db_connection()
+    paciente = conn.execute("SELECT nome FROM pacientes WHERE id = ?", (paciente_id,)).fetchone()
+    if paciente is None:
+        conn.close()
+        flash("Paciente não encontrado.", "warning")
+        return redirect(destino)
+
+    conn.execute("UPDATE pacientes SET status = ? WHERE id = ?", (status, paciente_id))
+    conn.commit()
+    conn.close()
+    if status == "ativo":
+        flash(f"{paciente['nome']} voltou a contar como morador ativo.", "success")
+    else:
+        flash(
+            f"{paciente['nome']} marcado como “{status_paciente_label(status)}”. "
+            "O cadastro fica guardado, fora das contagens do território.",
+            "success",
+        )
+    return redirect(destino)
+
+
+@app.route("/paciente/<int:paciente_id>/transferir", methods=["POST"])
+@login_required
+def transferir_paciente(paciente_id):
+    destino_url = proxima_url_segura(request.form.get("next"))
+    casa_destino_id, error = parse_positive_int(request.form.get("casa_destino_id"), "a casa de destino")
+    if error:
+        flash(error, "danger")
+        return redirect(destino_url)
+
+    conn = get_db_connection()
+    paciente = conn.execute(
+        "SELECT nome, casa_id, status FROM pacientes WHERE id = ?", (paciente_id,)
+    ).fetchone()
+    if paciente is None:
+        conn.close()
+        flash("Paciente não encontrado.", "warning")
+        return redirect(destino_url)
+
+    if status_paciente_de(paciente) == "obito":
+        conn.close()
+        flash(
+            "Paciente com óbito registrado não pode ser transferido. "
+            "Se for correção de cadastro, reative o paciente primeiro.",
+            "warning",
+        )
+        return redirect(destino_url)
+
+    casa_destino = conn.execute(
+        "SELECT id, numero_casa FROM casas WHERE id = ?", (casa_destino_id,)
+    ).fetchone()
+    if casa_destino is None:
+        conn.close()
+        flash("Casa de destino não encontrada.", "warning")
+        return redirect(destino_url)
+
+    if paciente["casa_id"] == casa_destino_id:
+        conn.close()
+        flash("O paciente já está nessa casa.", "info")
+        return redirect(destino_url)
+
+    # Transferir dentro da área = novo endereço conhecido → volta a ser ativo.
+    # A condição repete o bloqueio de óbito no próprio UPDATE: mesmo que o
+    # status mude entre o SELECT acima e aqui (outra aba), nada é "ressuscitado".
+    cursor = conn.execute(
+        "UPDATE pacientes SET casa_id = ?, status = 'ativo' "
+        "WHERE id = ? AND COALESCE(status, 'ativo') != 'obito'",
+        (casa_destino_id, paciente_id),
+    )
+    conn.commit()
+    conn.close()
+    if cursor.rowcount == 0:
+        flash("A transferência não foi aplicada — o cadastro mudou nesse meio tempo.", "warning")
+        return redirect(destino_url)
+    flash(
+        f"{paciente['nome']} transferido para a casa {casa_destino['numero_casa']}.",
+        "success",
+    )
+    return redirect(destino_url)
+
+
+@app.route("/casa/<int:casa_id>/transferir", methods=["POST"])
+@login_required
+def transferir_familia(casa_id):
+    casa = get_house_or_404(casa_id)
+    if casa is None:
+        return redirect(url_for("index"))
+
+    casa_destino_id, error = parse_positive_int(request.form.get("casa_destino_id"), "a casa de destino")
+    if error:
+        flash(error, "danger")
+        return redirect(url_for("detalhes_casa", casa_id=casa_id))
+
+    if casa_destino_id == casa_id:
+        flash("Escolha uma casa diferente da atual.", "danger")
+        return redirect(url_for("detalhes_casa", casa_id=casa_id))
+
+    conn = get_db_connection()
+    casa_destino = conn.execute(
+        "SELECT id, numero_casa FROM casas WHERE id = ?", (casa_destino_id,)
+    ).fetchone()
+    conn.close()
+    if casa_destino is None:
+        flash("Casa de destino não encontrada.", "warning")
+        return redirect(url_for("detalhes_casa", casa_id=casa_id))
+
+    try:
+        criar_backup("antes_transferir_familia")
+    except (sqlite3.Error, OSError) as exc:
+        logger.error("Falha ao criar backup antes de transferir família da casa %s: %s", casa_id, exc)
+        flash("Não foi possível criar backup de segurança. Transferência cancelada.", "danger")
+        return redirect(url_for("detalhes_casa", casa_id=casa_id))
+
+    # Só moradores ativos mudam junto — quem já se mudou antes fica registrado
+    # na casa onde morava.
+    conn = get_db_connection()
+    cursor = conn.execute(
+        f"UPDATE pacientes SET casa_id = ? WHERE casa_id = ? AND {SQL_PACIENTE_ATIVO}",
+        (casa_destino_id, casa_id),
+    )
+    transferidos = cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    if transferidos == 0:
+        flash("Esta casa não tem morador ativo para transferir.", "info")
+        return redirect(url_for("detalhes_casa", casa_id=casa_id))
+
+    flash(
+        f"{transferidos} morador(es) transferido(s) para a casa {casa_destino['numero_casa']}.",
+        "success",
+    )
+    return redirect(url_for("detalhes_casa", casa_id=casa_destino_id))
+
+
+# ---------------------------------------------------------------------------
+# Importação de pacientes a partir do CSV do e-SUS APS
+#
+# O relatório "acompanhamento de condições de saúde" vem com preâmbulo de
+# filtros, separador ';' e codificação Windows (cp1252). O parser localiza o
+# cabeçalho pelo nome das colunas — não por posição fixa — para sobreviver a
+# variações entre versões do e-SUS.
+# ---------------------------------------------------------------------------
+class ImportacaoInvalida(ValueError):
+    """Arquivo enviado não é um relatório CSV utilizável do e-SUS."""
+
+
+_RE_QUADRA_COMPLEMENTO = re.compile(r"\bQ(?:D|UADRA)?\.?\s*0*(\d+)", re.IGNORECASE)
+
+
+def _csv_valor(value):
+    value = str(value or "").strip()
+    return "" if value in ("-", "—") else value
+
+
+def _decodificar_csv(dados):
+    for encoding in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            return dados.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise ImportacaoInvalida("Não foi possível ler o arquivo — codificação de texto desconhecida.")
+
+
+def _data_iso(valor):
+    try:
+        return datetime.strptime(valor, "%d/%m/%Y").strftime("%Y-%m-%d")
+    except ValueError:
+        return ""
+
+
+def parse_relatorio_esus(texto):
+    """Extrai os pacientes do CSV do e-SUS: localiza a linha de cabeçalho,
+    mapeia as colunas por nome (sem depender de acento/caixa) e devolve
+    registros prontos para inserção."""
+    linhas = list(csv.reader(texto.splitlines(), delimiter=";"))
+
+    cabecalho_idx = None
+    for idx, linha in enumerate(linhas):
+        if linha and texto_normalizado(linha[0]) == "nome" and len(linha) > 3:
+            cabecalho_idx = idx
+            break
+    if cabecalho_idx is None:
+        raise ImportacaoInvalida(
+            "Cabeçalho não encontrado. Envie o CSV exportado do e-SUS "
+            "(relatório de acompanhamento de condições de saúde)."
+        )
+
+    colunas = {texto_normalizado(nome): pos for pos, nome in enumerate(linhas[cabecalho_idx])}
+
+    def campo(linha, nome):
+        pos = colunas.get(nome)
+        if pos is None or pos >= len(linha):
+            return ""
+        return _csv_valor(linha[pos])
+
+    registros = []
+    for linha in linhas[cabecalho_idx + 1:]:
+        if not linha or len(linha) < 4:
+            continue
+        nome = campo(linha, "nome")
+        if not nome:
+            continue
+
+        cpf = apenas_digitos(campo(linha, "cpf"))
+        cns = apenas_digitos(campo(linha, "cns"))
+        documento = cpf or cns
+        data_nascimento = _data_iso(campo(linha, "data de nascimento"))
+
+        # Linha sem documento e sem nascimento não é um cadastro do e-SUS —
+        # protege contra rodapés/totalizadores de outras versões do relatório.
+        if not documento and not data_nascimento:
+            continue
+
+        telefone = (
+            campo(linha, "telefone celular")
+            or campo(linha, "telefone residencial")
+            or campo(linha, "telefone de contato")
+        )
+
+        rua = campo(linha, "rua")
+        numero = campo(linha, "numero")
+        complemento = campo(linha, "complemento")
+        bairro = campo(linha, "bairro")
+
+        endereco_partes = []
+        if rua:
+            endereco_partes.append(f"{rua}, {numero}" if numero else rua)
+        if complemento:
+            endereco_partes.append(complemento)
+        if bairro:
+            endereco_partes.append(bairro)
+
+        sexo = campo(linha, "sexo").capitalize()
+        if sexo not in ("Masculino", "Feminino"):
+            sexo = ""
+
+        quadra_match = _RE_QUADRA_COMPLEMENTO.search(complemento)
+        registros.append(
+            {
+                "nome": nome,
+                "cpf": formatar_cpf_ou_cns(documento),
+                "documento_digitos": documento,
+                "telefone": formatar_telefone(telefone),
+                "data_nascimento": data_nascimento,
+                "sexo": sexo,
+                "endereco": " - ".join(endereco_partes),
+                "quadra": int(quadra_match.group(1)) if quadra_match else None,
+            }
+        )
+
+    return registros
+
+
+def _inserir_pacientes_importados(registros):
+    """Insere os registros reaproveitando quadras (pelo número no complemento,
+    ex. "QD 27 LT 01") e casas (pelo endereço). Deduplicação: CPF/CNS já
+    cadastrado, ou mesmo nome + data de nascimento."""
+    conn = get_db_connection()
+    try:
+        existentes = conn.execute("SELECT nome, cpf, data_nascimento FROM pacientes").fetchall()
+        docs_existentes = {apenas_digitos(p["cpf"]) for p in existentes if apenas_digitos(p["cpf"])}
+        nomes_existentes = {
+            (texto_normalizado(p["nome"]), p["data_nascimento"] or "") for p in existentes
+        }
+
+        quadras_por_numero = {
+            row["numero_quadra"]: row["id"]
+            for row in conn.execute("SELECT id, numero_quadra FROM quadras")
+        }
+        casas_por_endereco = {
+            texto_normalizado(row["endereco"]): row["id"]
+            for row in conn.execute("SELECT id, endereco FROM casas")
+        }
+
+        # Numeração sequencial por quadra, contada uma única vez por importação.
+        proximos_numeros = {}
+
+        def proximo_numero_casa(quadra_id):
+            if quadra_id not in proximos_numeros:
+                if quadra_id is None:
+                    row = conn.execute(
+                        "SELECT COALESCE(MAX(numero_casa), 0) + 1 AS n FROM casas"
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        "SELECT COALESCE(MAX(numero_casa), 0) + 1 AS n FROM casas WHERE quadra_id = ?",
+                        (quadra_id,),
+                    ).fetchone()
+                proximos_numeros[quadra_id] = row["n"]
+            numero = proximos_numeros[quadra_id]
+            proximos_numeros[quadra_id] += 1
+            return numero
+
+        resultado = {
+            "importados": 0,
+            "ignorados": 0,
+            "casas_criadas": 0,
+            "quadras_criadas": 0,
+            "sem_endereco": 0,
+        }
+
+        for registro in registros:
+            documento = registro["documento_digitos"]
+            chave_nome = (texto_normalizado(registro["nome"]), registro["data_nascimento"] or "")
+            if (documento and documento in docs_existentes) or chave_nome in nomes_existentes:
+                resultado["ignorados"] += 1
+                continue
+
+            casa_id = None
+            if registro["endereco"]:
+                chave_casa = texto_normalizado(registro["endereco"])
+                casa_id = casas_por_endereco.get(chave_casa)
+                if casa_id is None:
+                    quadra_id = None
+                    if registro["quadra"] is not None:
+                        quadra_id = quadras_por_numero.get(registro["quadra"])
+                        if quadra_id is None:
+                            cursor = conn.execute(
+                                "INSERT INTO quadras (numero_quadra) VALUES (?)",
+                                (registro["quadra"],),
+                            )
+                            quadra_id = cursor.lastrowid
+                            quadras_por_numero[registro["quadra"]] = quadra_id
+                            resultado["quadras_criadas"] += 1
+                    cursor = conn.execute(
+                        "INSERT INTO casas (quadra_id, numero_casa, endereco) VALUES (?, ?, ?)",
+                        (quadra_id, proximo_numero_casa(quadra_id), registro["endereco"]),
+                    )
+                    casa_id = cursor.lastrowid
+                    casas_por_endereco[chave_casa] = casa_id
+                    resultado["casas_criadas"] += 1
+            else:
+                resultado["sem_endereco"] += 1
+
+            conn.execute(
+                """
+                INSERT INTO pacientes (casa_id, nome, cpf, telefone, data_nascimento, sexo,
+                                       nome_pai, nome_mae, condicoes_saude, observacao)
+                VALUES (?, ?, ?, ?, ?, ?, '', '', '', ?)
+                """,
+                (
+                    casa_id,
+                    registro["nome"],
+                    registro["cpf"],
+                    registro["telefone"],
+                    registro["data_nascimento"],
+                    registro["sexo"],
+                    "Importado do e-SUS",
+                ),
+            )
+            if documento:
+                docs_existentes.add(documento)
+            nomes_existentes.add(chave_nome)
+            resultado["importados"] += 1
+
+        conn.commit()
+        return resultado
+    finally:
+        conn.close()
+
+
+@app.route("/pacientes/importar", methods=["GET", "POST"])
+@login_required
+def importar_pacientes():
+    if request.method == "POST":
+        arquivo = request.files.get("arquivo")
+        if arquivo is None or not arquivo.filename:
+            flash("Selecione o arquivo CSV exportado do e-SUS.", "danger")
+            return redirect(url_for("importar_pacientes"))
+
+        try:
+            registros = parse_relatorio_esus(_decodificar_csv(arquivo.read()))
+        except ImportacaoInvalida as exc:
+            logger.warning("Importação e-SUS rejeitada (%s): %s", request.remote_addr, exc)
+            flash(str(exc), "danger")
+            return redirect(url_for("importar_pacientes"))
+
+        if not registros:
+            flash("Nenhum paciente encontrado no arquivo.", "warning")
+            return redirect(url_for("importar_pacientes"))
+
+        try:
+            criar_backup("antes_importar_pacientes")
+        except (sqlite3.Error, OSError) as exc:
+            logger.error("Falha ao criar backup antes de importar pacientes: %s", exc)
+            flash("Não foi possível criar backup de segurança. Importação cancelada.", "danger")
+            return redirect(url_for("importar_pacientes"))
+
+        try:
+            resultado = _inserir_pacientes_importados(registros)
+        except sqlite3.Error as exc:
+            logger.error("Falha ao importar pacientes do e-SUS: %s", exc)
+            flash("Não foi possível concluir a importação. Nada foi alterado.", "danger")
+            return redirect(url_for("importar_pacientes"))
+
+        logger.info("Importação e-SUS concluída (%s): %s", request.remote_addr, resultado)
+        partes = [f"{resultado['importados']} paciente(s) importado(s)"]
+        if resultado["ignorados"]:
+            partes.append(f"{resultado['ignorados']} já cadastrado(s), ignorado(s)")
+        if resultado["casas_criadas"]:
+            partes.append(f"{resultado['casas_criadas']} casa(s) criada(s)")
+        if resultado["quadras_criadas"]:
+            partes.append(f"{resultado['quadras_criadas']} quadra(s) criada(s)")
+        if resultado["sem_endereco"]:
+            partes.append(f"{resultado['sem_endereco']} sem endereço no arquivo (ficaram sem casa)")
+        flash("Importação concluída: " + "; ".join(partes) + ".", "success")
+        return redirect(url_for("listar_pacientes"))
+
+    return render_template("importar_pacientes.html")
 
 
 @app.route("/exportar")
