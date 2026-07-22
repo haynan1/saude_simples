@@ -239,36 +239,49 @@ def _enviar_csv(client, conteudo=CSV_ESUS):
     )
 
 
-def test_importacao_esus_cria_pacientes_casas_e_quadras(logged_client):
+def test_importacao_esus_importa_todos_sem_casa(logged_client):
+    """Importar nunca vincula a casa nem cria casas/quadras — o vínculo é
+    decisão do operador ("Definir casa"). O endereço do arquivo vai para a
+    observação como referência."""
     resp = _enviar_csv(logged_client)
     assert resp.status_code == 302
 
     conn = db.get_db_connection()
     pacientes = conn.execute("SELECT * FROM pacientes ORDER BY nome").fetchall()
-    casas = conn.execute("SELECT * FROM casas").fetchall()
-    quadras = conn.execute("SELECT * FROM quadras").fetchall()
+    total_casas = conn.execute("SELECT COUNT(*) AS c FROM casas").fetchone()["c"]
+    total_quadras = conn.execute("SELECT COUNT(*) AS c FROM quadras").fetchone()["c"]
     conn.close()
 
     assert [p["nome"] for p in pacientes] == ["JOAO IMPORTADO", "MARIA IMPORTADA", "PEDRO SEM CASA"]
-    # Mesmo endereço → mesma casa; quadra 5 reconhecida no complemento.
-    assert len(casas) == 1
-    assert "Rua das Flores, 10" in casas[0]["endereco"]
-    assert len(quadras) == 1 and quadras[0]["numero_quadra"] == 5
-    assert casas[0]["quadra_id"] == quadras[0]["id"]
+    assert total_casas == 0
+    assert total_quadras == 0
+    assert all(p["casa_id"] is None for p in pacientes)
 
     maria = next(p for p in pacientes if p["nome"] == "MARIA IMPORTADA")
     assert maria["cpf"] == "123.456.789-01"
     assert maria["data_nascimento"] == "1980-03-01"
     assert maria["sexo"] == "Feminino"
     assert maria["telefone"] == "(64) 99999-0001"
-    assert maria["casa_id"] == casas[0]["id"]
+    assert "Rua das Flores, 10" in maria["observacao"]  # endereço preservado
 
     joao = next(p for p in pacientes if p["nome"] == "JOAO IMPORTADO")
     assert joao["cpf"] == "700 0000 0000 0001"  # CNS quando não há CPF
     assert joao["telefone"] == "(64) 3671-0002"  # residencial como alternativa
 
     pedro = next(p for p in pacientes if p["nome"] == "PEDRO SEM CASA")
-    assert pedro["casa_id"] is None
+    assert pedro["observacao"] == "Importado do e-SUS"  # sem endereço no arquivo
+
+
+def test_definir_casa_de_paciente_importado(logged_client):
+    _enviar_csv(logged_client)
+    criar_casa(logged_client)
+
+    resp = logged_client.post("/paciente/1/transferir", data={"casa_destino_id": "1"})
+    assert resp.status_code == 302
+    conn = db.get_db_connection()
+    casa_id = conn.execute("SELECT casa_id FROM pacientes WHERE id = 1").fetchone()["casa_id"]
+    conn.close()
+    assert casa_id == 1
 
 
 def test_importacao_esus_nao_duplica_em_reimportacao(logged_client):
@@ -280,7 +293,7 @@ def test_importacao_esus_nao_duplica_em_reimportacao(logged_client):
     casas = conn.execute("SELECT COUNT(*) AS c FROM casas").fetchone()["c"]
     conn.close()
     assert total == 3
-    assert casas == 1
+    assert casas == 0
 
 
 def test_importacao_rejeita_arquivo_sem_cabecalho(logged_client):

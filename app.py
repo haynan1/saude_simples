@@ -1,7 +1,6 @@
 import csv
 import logging
 import os
-import re
 import secrets
 import sqlite3
 import tempfile
@@ -1566,9 +1565,6 @@ class ImportacaoInvalida(ValueError):
     """Arquivo enviado não é um relatório CSV utilizável do e-SUS."""
 
 
-_RE_QUADRA_COMPLEMENTO = re.compile(r"\bQ(?:D|UADRA)?\.?\s*0*(\d+)", re.IGNORECASE)
-
-
 def _csv_valor(value):
     value = str(value or "").strip()
     return "" if value in ("-", "—") else value
@@ -1656,7 +1652,6 @@ def parse_relatorio_esus(texto):
         if sexo not in ("Masculino", "Feminino"):
             sexo = ""
 
-        quadra_match = _RE_QUADRA_COMPLEMENTO.search(complemento)
         registros.append(
             {
                 "nome": nome,
@@ -1666,7 +1661,6 @@ def parse_relatorio_esus(texto):
                 "data_nascimento": data_nascimento,
                 "sexo": sexo,
                 "endereco": " - ".join(endereco_partes),
-                "quadra": int(quadra_match.group(1)) if quadra_match else None,
             }
         )
 
@@ -1674,9 +1668,10 @@ def parse_relatorio_esus(texto):
 
 
 def _inserir_pacientes_importados(registros):
-    """Insere os registros reaproveitando quadras (pelo número no complemento,
-    ex. "QD 27 LT 01") e casas (pelo endereço). Deduplicação: CPF/CNS já
-    cadastrado, ou mesmo nome + data de nascimento."""
+    """Insere os registros SEM vincular a casa nenhuma — o vínculo é decisão
+    do operador, feita depois pelo "Definir casa" na lista de pacientes. O
+    endereço que veio no arquivo fica na observação, como referência.
+    Deduplicação: CPF/CNS já cadastrado, ou mesmo nome + data de nascimento."""
     conn = get_db_connection()
     try:
         existentes = conn.execute("SELECT nome, cpf, data_nascimento FROM pacientes").fetchall()
@@ -1685,41 +1680,7 @@ def _inserir_pacientes_importados(registros):
             (texto_normalizado(p["nome"]), p["data_nascimento"] or "") for p in existentes
         }
 
-        quadras_por_numero = {
-            row["numero_quadra"]: row["id"]
-            for row in conn.execute("SELECT id, numero_quadra FROM quadras")
-        }
-        casas_por_endereco = {
-            texto_normalizado(row["endereco"]): row["id"]
-            for row in conn.execute("SELECT id, endereco FROM casas")
-        }
-
-        # Numeração sequencial por quadra, contada uma única vez por importação.
-        proximos_numeros = {}
-
-        def proximo_numero_casa(quadra_id):
-            if quadra_id not in proximos_numeros:
-                if quadra_id is None:
-                    row = conn.execute(
-                        "SELECT COALESCE(MAX(numero_casa), 0) + 1 AS n FROM casas"
-                    ).fetchone()
-                else:
-                    row = conn.execute(
-                        "SELECT COALESCE(MAX(numero_casa), 0) + 1 AS n FROM casas WHERE quadra_id = ?",
-                        (quadra_id,),
-                    ).fetchone()
-                proximos_numeros[quadra_id] = row["n"]
-            numero = proximos_numeros[quadra_id]
-            proximos_numeros[quadra_id] += 1
-            return numero
-
-        resultado = {
-            "importados": 0,
-            "ignorados": 0,
-            "casas_criadas": 0,
-            "quadras_criadas": 0,
-            "sem_endereco": 0,
-        }
+        resultado = {"importados": 0, "ignorados": 0}
 
         for registro in registros:
             documento = registro["documento_digitos"]
@@ -1728,46 +1689,23 @@ def _inserir_pacientes_importados(registros):
                 resultado["ignorados"] += 1
                 continue
 
-            casa_id = None
+            observacao = "Importado do e-SUS"
             if registro["endereco"]:
-                chave_casa = texto_normalizado(registro["endereco"])
-                casa_id = casas_por_endereco.get(chave_casa)
-                if casa_id is None:
-                    quadra_id = None
-                    if registro["quadra"] is not None:
-                        quadra_id = quadras_por_numero.get(registro["quadra"])
-                        if quadra_id is None:
-                            cursor = conn.execute(
-                                "INSERT INTO quadras (numero_quadra) VALUES (?)",
-                                (registro["quadra"],),
-                            )
-                            quadra_id = cursor.lastrowid
-                            quadras_por_numero[registro["quadra"]] = quadra_id
-                            resultado["quadras_criadas"] += 1
-                    cursor = conn.execute(
-                        "INSERT INTO casas (quadra_id, numero_casa, endereco) VALUES (?, ?, ?)",
-                        (quadra_id, proximo_numero_casa(quadra_id), registro["endereco"]),
-                    )
-                    casa_id = cursor.lastrowid
-                    casas_por_endereco[chave_casa] = casa_id
-                    resultado["casas_criadas"] += 1
-            else:
-                resultado["sem_endereco"] += 1
+                observacao += f". Endereço no arquivo: {registro['endereco']}"
 
             conn.execute(
                 """
                 INSERT INTO pacientes (casa_id, nome, cpf, telefone, data_nascimento, sexo,
                                        nome_pai, nome_mae, condicoes_saude, observacao)
-                VALUES (?, ?, ?, ?, ?, ?, '', '', '', ?)
+                VALUES (NULL, ?, ?, ?, ?, ?, '', '', '', ?)
                 """,
                 (
-                    casa_id,
                     registro["nome"],
                     registro["cpf"],
                     registro["telefone"],
                     registro["data_nascimento"],
                     registro["sexo"],
-                    "Importado do e-SUS",
+                    observacao,
                 ),
             )
             if documento:
@@ -1816,15 +1754,9 @@ def importar_pacientes():
             return redirect(url_for("importar_pacientes"))
 
         logger.info("Importação e-SUS concluída (%s): %s", request.remote_addr, resultado)
-        partes = [f"{resultado['importados']} paciente(s) importado(s)"]
+        partes = [f"{resultado['importados']} paciente(s) importado(s) sem casa — use “Definir casa” para vincular"]
         if resultado["ignorados"]:
             partes.append(f"{resultado['ignorados']} já cadastrado(s), ignorado(s)")
-        if resultado["casas_criadas"]:
-            partes.append(f"{resultado['casas_criadas']} casa(s) criada(s)")
-        if resultado["quadras_criadas"]:
-            partes.append(f"{resultado['quadras_criadas']} quadra(s) criada(s)")
-        if resultado["sem_endereco"]:
-            partes.append(f"{resultado['sem_endereco']} sem endereço no arquivo (ficaram sem casa)")
         flash("Importação concluída: " + "; ".join(partes) + ".", "success")
         return redirect(url_for("listar_pacientes"))
 

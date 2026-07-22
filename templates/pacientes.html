@@ -152,14 +152,15 @@
               <td class="px-4 py-2.5">
                 <div class="flex items-center justify-end gap-1.5 flex-wrap" role="group" aria-label="Ações do paciente {{ paciente.nome }}">
                   {% if status != 'obito' %}
+                    {% set rotulo_transferencia = 'Transferir' if paciente.casa_id else 'Definir casa' %}
                     <button
                       class="btn-secondary house-tile-btn"
                       type="button"
                       data-transfer-open
                       data-transfer-action="{{ url_for('transferir_paciente', paciente_id=paciente.id) }}"
-                      data-transfer-title="Transferir {{ paciente.nome }}"
-                      title="Transferir {{ paciente.nome }} para outra casa"
-                    >Transferir</button>
+                      data-transfer-title="{{ rotulo_transferencia }}: {{ paciente.nome }}"
+                      title="{{ 'Transferir ' ~ paciente.nome ~ ' para outra casa' if paciente.casa_id else 'Definir a casa de ' ~ paciente.nome }}"
+                    >{{ rotulo_transferencia }}</button>
                   {% endif %}
                   <a class="btn-secondary house-tile-btn" href="{{ url_for('editar_paciente', paciente_id=paciente.id) }}"
                      title="Editar {{ paciente.nome }}" aria-label="Editar {{ paciente.nome }}">Editar</a>
