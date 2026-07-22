@@ -803,6 +803,14 @@ def get_casas_para_transferencia(excluir_casa_id=None):
     return [casa for casa in casas if casa["id"] != excluir_casa_id]
 
 
+def redirect_apos_acao_no_paciente(casa_id):
+    """Volta para a casa do paciente — ou, sem casa vinculada (ex.: importado
+    do e-SUS ainda não alocado), para a lista de pacientes."""
+    if casa_id:
+        return redirect(url_for("detalhes_casa", casa_id=casa_id))
+    return redirect(url_for("listar_pacientes"))
+
+
 def get_house_or_404(casa_id):
     conn = get_db_connection()
     casa = conn.execute(
@@ -1396,7 +1404,7 @@ def editar_paciente(paciente_id):
         casa_id = paciente["casa_id"]
         conn.close()
         flash("Paciente atualizado com sucesso.", "success")
-        return redirect(url_for("detalhes_casa", casa_id=casa_id))
+        return redirect_apos_acao_no_paciente(casa_id)
 
     conn.close()
     return render_template("editar_paciente.html", paciente=paciente, casa=casa)
@@ -1425,7 +1433,7 @@ def excluir_paciente(paciente_id):
     conn.commit()
     conn.close()
     flash("Paciente excluído com sucesso.", "success")
-    return redirect(url_for("detalhes_casa", casa_id=casa_id))
+    return redirect_apos_acao_no_paciente(casa_id)
 
 
 @app.route("/pacientes")
@@ -2231,70 +2239,40 @@ def exportar_pdf():
     comorbidity_title = "Contagem de comorbidades no filtro" if modo_filtro else "Contagem por comorbidade"
     elements.extend([Paragraph(comorbidity_title, section_style), comorbidity_table, Spacer(1, 12)])
 
-    if not casas:
-        if filtro_sem_selecao:
-            empty_message = "Nenhum grupo ou comorbidade selecionado para exportação."
-        elif filtro_ativo:
-            empty_message = "Nenhum paciente encontrado para o recorte selecionado."
-        else:
-            empty_message = "Nenhuma casa cadastrada."
-        elements.append(
-            KeepTogether(
-                [
-                    Paragraph("Pacientes por quadra e casa", section_style),
-                    Paragraph(empty_message, normal_style),
-                ]
-            )
-        )
+    # Pacientes ainda sem casa vinculada (ex.: recém-importados do e-SUS)
+    # ganham seção própria — o relatório NUNCA omite gente do recorte.
+    pacientes_sem_casa = pacientes_por_casa.get(None, [])
 
-    quadra_atual = object()
-    primeira_casa = True
-    for casa in casas:
-        casa_elements = []
-        quadra_label = f"Quadra Nº {casa['numero_quadra']}" if casa["numero_quadra"] else "Sem quadra"
-
-        if primeira_casa:
-            casa_elements.append(Paragraph("Pacientes por quadra e casa", section_style))
-
-        if quadra_label != quadra_atual:
-            casa_elements.append(Paragraph(quadra_label, block_style))
-            quadra_atual = quadra_label
-
-        lista_pacientes = pacientes_por_casa.get(casa["id"], [])
-        total_da_casa = len(lista_pacientes)
-
-        tipo_casa = tipo_imovel_de(casa)
-        endereco_pdf = f"<b>Endereço:</b> {xml_escape(casa['endereco'] or '')}"
-        if tipo_casa != "domicilio":
-            endereco_pdf += f" &nbsp;|&nbsp; <b>Tipo:</b> {xml_escape(tipo_imovel_label(tipo_casa))}"
-        bloco_casa = [
-            [
-                Paragraph(f"Casa Nº {casa['numero_casa']}", house_style),
-                Paragraph(f"{total_da_casa} paciente(s)", house_style),
-            ],
-            [
-                Paragraph(endereco_pdf, normal_style),
-                "",
-            ],
+    estilo_cabecalho_bloco = TableStyle(
+        [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d6efd")),
+            ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#f1f6ff")),
+            ("SPAN", (0, 1), (1, 1)),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#b6d4fe")),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#084298")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
         ]
-        tabela_casa = Table(bloco_casa, colWidths=[13.0 * cm, 4.0 * cm])
-        tabela_casa.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d6efd")),
-                    ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#f1f6ff")),
-                    ("SPAN", (0, 1), (1, 1)),
-                    ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#b6d4fe")),
-                    ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#084298")),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                    ("TOPPADDING", (0, 0), (-1, -1), 7),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-                    ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-                ]
-            )
-        )
+    )
 
+    def montar_cabecalho_bloco(titulo, subtitulo_html, total):
+        """Cabeçalho azul de um bloco de pacientes (casa ou 'sem casa')."""
+        tabela = Table(
+            [
+                [Paragraph(titulo, house_style), Paragraph(f"{total} paciente(s)", house_style)],
+                [Paragraph(subtitulo_html, normal_style), ""],
+            ],
+            colWidths=[13.0 * cm, 4.0 * cm],
+        )
+        tabela.setStyle(estilo_cabecalho_bloco)
+        return tabela
+
+    def montar_tabela_pacientes(lista_pacientes):
+        """Tabela de pacientes de um bloco. Retorna (tabela, nº de linhas) —
+        blocos curtos são mantidos juntos na paginação."""
         dados = [
             [
                 pdf_text("Paciente", label_style),
@@ -2370,14 +2348,70 @@ def exportar_pdf():
                         ]
                     )
                 )
-        casa_intro = casa_elements + [tabela_casa, Spacer(1, 6)]
-        if len(dados) <= 8:
-            elements.append(KeepTogether(casa_intro + [tabela, Spacer(1, 14)]))
+        return tabela, len(dados)
+
+    def adicionar_bloco(intro_elements, cabecalho, tabela, linhas):
+        intro = intro_elements + [cabecalho, Spacer(1, 6)]
+        if linhas <= 8:
+            elements.append(KeepTogether(intro + [tabela, Spacer(1, 14)]))
         else:
-            elements.append(KeepTogether(casa_intro))
+            elements.append(KeepTogether(intro))
             elements.append(tabela)
             elements.append(Spacer(1, 14))
-        primeira_casa = False
+
+    if not casas and not pacientes_sem_casa:
+        if filtro_sem_selecao:
+            empty_message = "Nenhum grupo ou comorbidade selecionado para exportação."
+        elif filtro_ativo:
+            empty_message = "Nenhum paciente encontrado para o recorte selecionado."
+        else:
+            empty_message = "Nenhuma casa ou paciente cadastrado."
+        elements.append(
+            KeepTogether(
+                [
+                    Paragraph("Pacientes por quadra e casa", section_style),
+                    Paragraph(empty_message, normal_style),
+                ]
+            )
+        )
+
+    quadra_atual = object()
+    primeiro_bloco = True
+    for casa in casas:
+        casa_elements = []
+        quadra_label = f"Quadra Nº {casa['numero_quadra']}" if casa["numero_quadra"] else "Sem quadra"
+
+        if primeiro_bloco:
+            casa_elements.append(Paragraph("Pacientes por quadra e casa", section_style))
+
+        if quadra_label != quadra_atual:
+            casa_elements.append(Paragraph(quadra_label, block_style))
+            quadra_atual = quadra_label
+
+        lista_pacientes = pacientes_por_casa.get(casa["id"], [])
+
+        tipo_casa = tipo_imovel_de(casa)
+        endereco_pdf = f"<b>Endereço:</b> {xml_escape(casa['endereco'] or '')}"
+        if tipo_casa != "domicilio":
+            endereco_pdf += f" &nbsp;|&nbsp; <b>Tipo:</b> {xml_escape(tipo_imovel_label(tipo_casa))}"
+
+        cabecalho = montar_cabecalho_bloco(f"Casa Nº {casa['numero_casa']}", endereco_pdf, len(lista_pacientes))
+        tabela, linhas = montar_tabela_pacientes(lista_pacientes)
+        adicionar_bloco(casa_elements, cabecalho, tabela, linhas)
+        primeiro_bloco = False
+
+    if pacientes_sem_casa:
+        secao_elements = []
+        if primeiro_bloco:
+            secao_elements.append(Paragraph("Pacientes por quadra e casa", section_style))
+        secao_elements.append(Paragraph("Sem casa definida", block_style))
+        cabecalho = montar_cabecalho_bloco(
+            "Pacientes sem casa vinculada",
+            "<b>Endereço:</b> ainda não definido no sistema — vincule pela página Pacientes",
+            len(pacientes_sem_casa),
+        )
+        tabela, linhas = montar_tabela_pacientes(pacientes_sem_casa)
+        adicionar_bloco(secao_elements, cabecalho, tabela, linhas)
 
     doc.build(elements, onFirstPage=adicionar_cabecalho_rodape, onLaterPages=adicionar_cabecalho_rodape)
     buffer.seek(0)

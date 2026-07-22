@@ -90,9 +90,17 @@
                 {% set status_busca = paciente|status_codigo %}
                 {% if status_busca != 'ativo' %}{{ badge_status(status_busca) }}{% endif %}
               </div>
-              <p class="text-xs text-slate-500">Casa {{ paciente.numero_casa }}{% if paciente.numero_quadra %} · Quadra {{ paciente.numero_quadra }}{% endif %}{% if paciente.endereco %} · {{ paciente.endereco }}{% endif %}</p>
+              {% if paciente.casa_id %}
+                <p class="text-xs text-slate-500">Casa {{ paciente.numero_casa }}{% if paciente.numero_quadra %} · Quadra {{ paciente.numero_quadra }}{% endif %}{% if paciente.endereco %} · {{ paciente.endereco }}{% endif %}</p>
+              {% else %}
+                <p class="text-xs text-slate-500">Sem casa definida — vincule pela página Pacientes.</p>
+              {% endif %}
             </div>
-            <a class="btn-secondary shrink-0" href="{{ url_for('detalhes_casa', casa_id=paciente.casa_id) }}">Abrir</a>
+            {% if paciente.casa_id %}
+              <a class="btn-secondary shrink-0" href="{{ url_for('detalhes_casa', casa_id=paciente.casa_id) }}">Abrir</a>
+            {% else %}
+              <a class="btn-secondary shrink-0" href="{{ url_for('listar_pacientes', busca=paciente.nome) }}">Definir casa</a>
+            {% endif %}
           </div>
         {% endfor %}
       {% else %}
