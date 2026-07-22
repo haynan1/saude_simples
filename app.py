@@ -857,14 +857,50 @@ def index():
             paciente for paciente in todos_pacientes if paciente_corresponde_busca(paciente, busca)
         ]
     conn.close()
+    # Indicadores sempre sobre o território inteiro — o filtro recorta apenas
+    # a lista de casas.
     stats = build_dashboard_stats(casas, pacientes)
+
+    # Filtro de casas: por tipo de imóvel (multi) e/ou por quadra.
+    tipos_filtro = [
+        tipo for tipo in request.args.getlist("tipo") if tipo in TIPOS_IMOVEL_POR_CODIGO
+    ]
+    quadra_filtro = request.args.get("quadra", "").strip()
+
+    # Contagens exibidas no modal — calculadas ANTES do recorte, para o
+    # operador saber quantos imóveis existem de cada tipo/quadra.
+    contagem_tipos = {opcao["codigo"]: 0 for opcao in TIPOS_IMOVEL_OPCOES}
+    sem_quadra_total = 0
+    for casa in casas:
+        contagem_tipos[tipo_imovel_de(casa)] += 1
+        if casa["quadra_id"] is None:
+            sem_quadra_total += 1
+
+    total_casas_geral = len(casas)
+    casas_filtradas = casas
+    if tipos_filtro:
+        tipos_ativos = set(tipos_filtro)
+        casas_filtradas = [casa for casa in casas_filtradas if tipo_imovel_de(casa) in tipos_ativos]
+    if quadra_filtro == "0":
+        casas_filtradas = [casa for casa in casas_filtradas if casa["quadra_id"] is None]
+    elif quadra_filtro.isdigit():
+        casas_filtradas = [casa for casa in casas_filtradas if casa["quadra_id"] == int(quadra_filtro)]
+    else:
+        quadra_filtro = ""
+
     return render_template(
         "index.html",
-        casas=casas,
+        casas=casas_filtradas,
         quadras=quadras,
         stats=stats,
         busca=busca,
         pacientes_busca=pacientes_busca,
+        tipos_filtro=tipos_filtro,
+        quadra_filtro=quadra_filtro,
+        contagem_tipos=contagem_tipos,
+        sem_quadra_total=sem_quadra_total,
+        total_casas_geral=total_casas_geral,
+        filtro_ativo=bool(tipos_filtro or quadra_filtro),
     )
 
 

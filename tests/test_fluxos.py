@@ -150,6 +150,75 @@ def test_vazias_conta_apenas_imoveis_residenciais(logged_client):
     assert "2 vazia(s)" in body
 
 
+# ---------------------------------------------------------------------------
+# Filtro de casas (tipo de imóvel + quadra)
+# ---------------------------------------------------------------------------
+def _montar_territorio_para_filtro(logged_client):
+    criar_quadra(logged_client, "1")
+    criar_casa(logged_client, endereco="Domicílio Q1", numero="1", quadra_id="1")
+    logged_client.post(
+        "/casa/nova",
+        data={"endereco": "Loja Q1", "numero_casa": "2", "quadra_id": "1", "tipo_imovel": "loja"},
+    )
+    logged_client.post(
+        "/casa/nova",
+        data={"endereco": "Loja sem quadra", "numero_casa": "3", "quadra_id": "", "tipo_imovel": "loja"},
+    )
+
+
+def test_filtro_por_tipo_de_imovel(logged_client):
+    _montar_territorio_para_filtro(logged_client)
+    body = logged_client.get("/?tipo=loja").get_data(as_text=True)
+    assert "Loja Q1" in body
+    assert "Loja sem quadra" in body
+    assert "Domicílio Q1" not in body
+    assert "2 de 3 — filtro ativo" in body
+
+
+def test_filtro_por_quadra(logged_client):
+    _montar_territorio_para_filtro(logged_client)
+    body = logged_client.get("/?quadra=1").get_data(as_text=True)
+    assert "Domicílio Q1" in body
+    assert "Loja Q1" in body
+    assert "Loja sem quadra" not in body
+
+
+def test_filtro_sem_quadra(logged_client):
+    _montar_territorio_para_filtro(logged_client)
+    body = logged_client.get("/?quadra=0").get_data(as_text=True)
+    assert "Loja sem quadra" in body
+    assert "Domicílio Q1" not in body
+
+
+def test_filtro_combinado_tipo_e_quadra(logged_client):
+    _montar_territorio_para_filtro(logged_client)
+    body = logged_client.get("/?tipo=loja&quadra=1").get_data(as_text=True)
+    assert "Loja Q1" in body
+    assert "Loja sem quadra" not in body
+    assert "Domicílio Q1" not in body
+
+
+def test_filtro_mostra_contagens_no_modal(logged_client):
+    _montar_territorio_para_filtro(logged_client)
+    body = logged_client.get("/").get_data(as_text=True)
+    assert "Filtrar casas" in body                      # modal presente
+    assert "Quadra 1 (2 casas)" in body                 # contagem por quadra
+    assert "Sem quadra (1)" in body
+
+
+def test_filtro_tipo_invalido_ignorado(logged_client):
+    _montar_territorio_para_filtro(logged_client)
+    body = logged_client.get("/?tipo=castelo&quadra=abc").get_data(as_text=True)
+    assert "3 cadastrada(s)" in body                    # filtro não ativou
+    assert "filtro ativo" not in body
+
+
+def test_filtro_sem_resultado(logged_client):
+    _montar_territorio_para_filtro(logged_client)
+    body = logged_client.get("/?tipo=escola").get_data(as_text=True)
+    assert "Nenhuma casa corresponde ao filtro" in body
+
+
 def test_numeracao_automatica_por_quadra(logged_client):
     criar_quadra(logged_client)
     criar_casa(logged_client, numero="", quadra_id="1")
