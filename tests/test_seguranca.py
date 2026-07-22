@@ -5,6 +5,7 @@ sistema. Se uma mudança quebrar uma delas, são eles que acusam.
 """
 import pytest
 
+import db
 from tests.conftest import SENHA_TESTE, criar_casa, criar_paciente
 
 ROTAS_PROTEGIDAS_GET = [
@@ -190,6 +191,98 @@ def test_alterar_senha_politica_minima(logged_client):
     assert resp.status_code == 200
     logged_client.post("/logout")
     assert logged_client.post("/login", data={"senha": SENHA_TESTE}).status_code == 302
+
+
+# ---------------------------------------------------------------------------
+# Configuração inicial (/setup)
+# ---------------------------------------------------------------------------
+def test_setup_sem_senha_login_redireciona_para_setup(app_sem_senha):
+    client = app_sem_senha.test_client()
+    resp = client.get("/login")
+    assert resp.status_code == 302
+    assert "/setup" in resp.headers["Location"]
+
+
+def test_setup_tela_disponivel_e_gera_codigo(app_sem_senha):
+    import os
+
+    client = app_sem_senha.test_client()
+    resp = client.get("/setup")
+    assert resp.status_code == 200
+    assert "Código de segurança" in resp.get_data(as_text=True)
+    assert os.path.exists(db.SETUP_TOKEN_PATH)
+
+
+def test_setup_codigo_errado_nao_define_senha(app_sem_senha):
+    client = app_sem_senha.test_client()
+    db.ensure_setup_token()
+    resp = client.post(
+        "/setup",
+        data={"codigo": "AAAA-AAAA", "nova_senha": "senha-nova-12345", "confirmar_senha": "senha-nova-12345"},
+    )
+    assert resp.status_code == 200  # re-render com erro
+    assert not db.senha_configurada()
+
+
+def test_setup_codigo_correto_define_senha_e_e_uso_unico(app_sem_senha):
+    import os
+
+    client = app_sem_senha.test_client()
+    codigo = db.ensure_setup_token()
+
+    # Digitação tolerante: minúsculas e sem hífen também valem.
+    resp = client.post(
+        "/setup",
+        data={
+            "codigo": codigo.replace("-", "").lower(),
+            "nova_senha": "senha-nova-12345",
+            "confirmar_senha": "senha-nova-12345",
+        },
+    )
+    assert resp.status_code == 302
+    assert db.senha_configurada()
+    assert not os.path.exists(db.SETUP_TOKEN_PATH)  # código destruído após o uso
+
+    # Uso único e irreversível: /setup vira redirect permanente para o login.
+    assert "/login" in client.get("/setup").headers["Location"]
+
+    # A senha definida funciona.
+    resp = client.post("/login", data={"senha": "senha-nova-12345"})
+    assert resp.status_code == 302
+
+
+def test_setup_politica_de_senha_valida_antes_do_codigo(app_sem_senha):
+    client = app_sem_senha.test_client()
+    codigo = db.ensure_setup_token()
+    resp = client.post(
+        "/setup",
+        data={"codigo": codigo, "nova_senha": "curta", "confirmar_senha": "curta"},
+    )
+    assert resp.status_code == 200
+    assert not db.senha_configurada()
+
+
+def test_setup_com_rate_limit(app_sem_senha):
+    client = app_sem_senha.test_client()
+    codigo = db.ensure_setup_token()
+    for _ in range(5):
+        client.post(
+            "/setup",
+            data={"codigo": "XXXX-XXXX", "nova_senha": "senha-nova-12345", "confirmar_senha": "senha-nova-12345"},
+        )
+    # Mesmo com o código CERTO, a 6ª tentativa na janela é bloqueada.
+    resp = client.post(
+        "/setup",
+        data={"codigo": codigo, "nova_senha": "senha-nova-12345", "confirmar_senha": "senha-nova-12345"},
+    )
+    assert resp.status_code == 429
+    assert not db.senha_configurada()
+
+
+def test_setup_desativado_com_senha_configurada(client):
+    resp = client.get("/setup")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
 
 
 def test_pagina_login_nao_referencia_cdn(client):

@@ -14,21 +14,29 @@ SENHA_TESTE = "senha-de-teste-123"
 
 
 @pytest.fixture()
-def app(tmp_path):
-    """App com banco isolado por teste e estado de rate-limit limpo."""
-    from werkzeug.security import generate_password_hash
-
+def app_sem_senha(tmp_path):
+    """App recém-instalado: banco isolado criado, nenhuma senha configurada."""
     import app as app_module
 
     db.DATABASE = str(tmp_path / "test.db")
     db.BACKUP_DIR = str(tmp_path / "backups")
+    db.INSTANCE_DIR = str(tmp_path / "instance")
+    db.SETUP_TOKEN_PATH = str(tmp_path / "instance" / "setup_token")
     db.init_db()
-    db.set_senha_hash(generate_password_hash(SENHA_TESTE))
 
     app_module._login_attempts.clear()
     app_module.app.config["WTF_CSRF_ENABLED"] = False
     yield app_module.app
     app_module.app.config["WTF_CSRF_ENABLED"] = False
+
+
+@pytest.fixture()
+def app(app_sem_senha):
+    """App já configurado (senha definida) — o estado normal de operação."""
+    from werkzeug.security import generate_password_hash
+
+    db.set_senha_hash(generate_password_hash(SENHA_TESTE))
+    return app_sem_senha
 
 
 @pytest.fixture()

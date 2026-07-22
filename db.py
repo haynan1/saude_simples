@@ -1,5 +1,6 @@
 import logging
 import os
+import secrets
 import shutil
 import sqlite3
 from datetime import datetime
@@ -146,20 +147,85 @@ def init_db():
     conn.close()
 
 
-def garantir_senha_inicial(bootstrap_hash=None):
+def senha_configurada():
     conn = get_db_connection()
     existe = conn.execute("SELECT 1 FROM configuracao WHERE id = 1").fetchone() is not None
-    if not existe:
-        if not bootstrap_hash:
-            conn.close()
-            raise RuntimeError(
-                "Nenhuma senha configurada ainda. Rode `python resetar_senha.py` para definir a "
-                "senha inicial (recomendado), ou defina SAUDE_SIMPLES_PASSWORD_HASH no .env "
-                "(veja .env.example) antes de iniciar o servidor."
-            )
-        conn.execute("INSERT INTO configuracao (id, senha_hash) VALUES (1, ?)", (bootstrap_hash,))
-        conn.commit()
     conn.close()
+    return existe
+
+
+def garantir_senha_inicial(bootstrap_hash=None):
+    """Aplica o hash do ambiente (setups automatizados) se ainda não houver senha.
+
+    Retorna True se há senha configurada ao final. Sem senha e sem hash, o
+    servidor sobe mesmo assim: o assistente /setup assume a partir daí.
+    """
+    if senha_configurada():
+        return True
+    if bootstrap_hash:
+        set_senha_hash(bootstrap_hash)
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Código de segurança do primeiro acesso (/setup)
+#
+# Propriedade central: só quem lê o terminal (ou o arquivo em instance/) da
+# máquina onde o servidor roda conhece o código — estar na mesma rede não
+# basta para se tornar dono do sistema.
+# ---------------------------------------------------------------------------
+SETUP_TOKEN_PATH = os.path.join(INSTANCE_DIR, "setup_token")
+
+# Sem 0/O/1/I: o código é feito para ser lido no terminal e digitado sem
+# ambiguidade (ou ditado por telefone).
+_SETUP_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def _gerar_codigo_legivel():
+    blocos = ["".join(secrets.choice(_SETUP_ALPHABET) for _ in range(4)) for _ in range(2)]
+    return "-".join(blocos)
+
+
+def _normalizar_codigo(codigo):
+    return "".join(char for char in str(codigo or "").upper() if char.isalnum())
+
+
+def ensure_setup_token():
+    """Gera (ou reaproveita) o código de configuração inicial, persistido em
+    instance/setup_token com permissão restrita ao dono."""
+    os.makedirs(INSTANCE_DIR, exist_ok=True)
+
+    if os.path.exists(SETUP_TOKEN_PATH):
+        with open(SETUP_TOKEN_PATH, encoding="utf-8") as arquivo:
+            codigo = arquivo.read().strip()
+        if _normalizar_codigo(codigo):
+            return codigo
+
+    codigo = _gerar_codigo_legivel()
+    with open(SETUP_TOKEN_PATH, "w", encoding="utf-8") as arquivo:
+        arquivo.write(codigo + "\n")
+    os.chmod(SETUP_TOKEN_PATH, 0o600)
+    return codigo
+
+
+def verify_setup_token(candidato):
+    """Compara em tempo constante, tolerando hífen/minúsculas na digitação."""
+    if not os.path.exists(SETUP_TOKEN_PATH):
+        return False
+    with open(SETUP_TOKEN_PATH, encoding="utf-8") as arquivo:
+        esperado = _normalizar_codigo(arquivo.read())
+    recebido = _normalizar_codigo(candidato)
+    if not esperado or not recebido:
+        return False
+    return secrets.compare_digest(esperado, recebido)
+
+
+def clear_setup_token():
+    try:
+        os.remove(SETUP_TOKEN_PATH)
+    except FileNotFoundError:
+        pass
 
 
 def get_senha_hash():

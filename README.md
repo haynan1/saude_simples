@@ -33,21 +33,32 @@ python -c "import secrets; print(secrets.token_hex(32))"
 
 Cole o valor gerado em `SAUDE_SIMPLES_SECRET_KEY=` no `.env`. Esse valor não precisa (e não deve) ser o mesmo em outra instalação.
 
-## Definir a senha de acesso
-
-```bash
-python resetar_senha.py
-```
-
-Ele vai pedir pra você digitar a nova senha duas vezes (mínimo 10 caracteres). Não precisa editar o `.env` nem gerar hash manualmente — é só rodar e seguir o prompt.
-
 ## Rodar o sistema
 
 ```bash
 python app.py
 ```
 
-Por padrão abre em `http://127.0.0.1:5001`. Acesse esse endereço no navegador e entre com a senha definida no passo anterior.
+Por padrão abre em `http://127.0.0.1:5001`. O banco de dados é criado automaticamente no primeiro boot.
+
+### Primeiro acesso
+
+Na primeira execução (sem senha configurada), o terminal exibe um **código de segurança**:
+
+```
+==============================================================
+  PRIMEIRO ACESSO — nenhuma senha configurada ainda.
+
+  Código de segurança:  AB7K-3XM2
+  ...
+==============================================================
+```
+
+Abra o sistema no navegador — ele leva direto à tela de configuração inicial. Informe o código e defina a senha de acesso (mínimo 10 caracteres). O código:
+
+- Prova posse da máquina: só quem lê o terminal (ou `instance/setup_token`) consegue definir a senha — estar na mesma rede não basta.
+- É de uso único: depois da senha definida, a tela `/setup` é desativada para sempre e o arquivo do código é destruído.
+- É comparado em tempo constante e protegido por rate limit (5 tentativas/minuto).
 
 ## Esqueci a senha / vou usar numa máquina nova
 

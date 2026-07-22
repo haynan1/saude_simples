@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}Configuração inicial{% endblock %}
+
+{% block unauthenticated %}
+<button
+  type="button"
+  class="theme-toggle login-theme-toggle"
+  aria-label="Alternar modo claro e escuro"
+  title="Alternar modo claro e escuro"
+  data-theme-toggle
+>
+  <svg class="theme-icon theme-icon-sun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.36 6.36-.7-.7M6.34 6.34l-.7-.7m12.02 0-.7.7M6.34 17.66l-.7.7M12 8a4 4 0 100 8 4 4 0 000-8z"/>
+  </svg>
+  <svg class="theme-icon theme-icon-moon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.35 15.35A9 9 0 118.65 3.65 7 7 0 0020.35 15.35z"/>
+  </svg>
+</button>
+<style nonce="{{ csp_nonce }}">
+  .login-theme-toggle {
+    position: fixed;
+    right: 16px;
+    top: 16px;
+    z-index: 20;
+  }
+
+  .login-page {
+    align-items: center;
+    background: linear-gradient(135deg, #0f172a 0%, #172554 50%, #0f172a 100%);
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 40px 16px;
+    width: 100%;
+  }
+
+  .login-shell {
+    margin: 0 auto;
+    max-width: 440px;
+    width: 100%;
+  }
+
+  .login-brand {
+    margin-bottom: 32px;
+    text-align: center;
+  }
+
+  .login-logo {
+    align-items: center;
+    background: #3b82f6;
+    border-radius: 16px;
+    display: inline-flex;
+    height: 56px;
+    justify-content: center;
+    margin-bottom: 16px;
+    width: 56px;
+  }
+
+  .login-title {
+    color: #ffffff;
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 0;
+  }
+
+  .login-subtitle {
+    color: #94a3b8;
+    font-size: 14px;
+    margin: 6px 0 0;
+  }
+
+  .login-card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.32);
+    padding: 32px;
+  }
+
+  .login-card-title {
+    color: #0f172a;
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0 0 8px;
+  }
+
+  .login-card-sub {
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 0 0 24px;
+  }
+
+  .login-form {
+    display: grid;
+    gap: 20px;
+  }
+
+  .login-field label {
+    color: #0f172a;
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .login-field input {
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    box-sizing: border-box;
+    color: #0f172a;
+    font-size: 14px;
+    padding: 13px 16px;
+    width: 100%;
+  }
+
+  .setup-code-input {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 16px !important;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .login-hint {
+    color: #64748b;
+    font-size: 12px;
+    margin: 6px 0 0;
+  }
+
+  .login-button {
+    background: #2563eb;
+    border: 0;
+    border-radius: 12px;
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 14px 16px;
+    width: 100%;
+  }
+
+  .login-button:hover {
+    background: #1d4ed8;
+  }
+
+  .login-alert {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    color: #b91c1c;
+    font-size: 14px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+  }
+
+  .login-alert.success {
+    background: #ecfdf5;
+    border-color: #bbf7d0;
+    color: #047857;
+  }
+
+  .setup-notice {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 10px;
+    color: #1e40af;
+    font-size: 13px;
+    line-height: 1.55;
+    margin-bottom: 24px;
+    padding: 12px 14px;
+  }
+
+  @media (max-width: 520px) {
+    .login-card {
+      padding: 24px;
+    }
+  }
+</style>
+
+<div class="login-page">
+  <div class="login-shell">
+    <div class="login-brand">
+      <div class="login-logo">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" width="32" height="32" aria-hidden="true">
+          <path fill-rule="evenodd" d="M11.484 2.17a.75.75 0 0 1 1.032 0 11.209 11.209 0 0 0 7.877 3.08.75.75 0 0 1 .722.515 12.74 12.74 0 0 1 .635 3.985c0 5.942-4.064 10.933-9.563 12.348a.749.749 0 0 1-.374 0C6.314 20.683 2.25 15.692 2.25 9.75c0-1.39.223-2.73.635-3.985a.75.75 0 0 1 .722-.516l.143.001c2.996 0 5.718-1.17 7.734-3.08ZM12 8.25a.75.75 0 0 1 .75.75v2.25H15a.75.75 0 0 1 0 1.5h-2.25V15a.75.75 0 0 1-1.5 0v-2.25H9a.75.75 0 0 1 0-1.5h2.25V9a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/>
+        </svg>
+      </div>
+      <h1 class="login-title">Saúde Simples</h1>
+      <p class="login-subtitle">Sistema de cadastro do ACS</p>
+    </div>
+
+    <div class="login-card">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}
+          <div class="login-alert {{ 'success' if cat == 'success' else '' }}" data-auto-dismiss>
+            {{ msg }}
+          </div>
+        {% endfor %}
+      {% endwith %}
+
+      <h2 class="login-card-title">Configuração inicial</h2>
+      <p class="login-card-sub">Bem-vindo! Defina a senha de acesso do sistema.</p>
+
+      <div class="setup-notice">
+        O <strong>código de segurança</strong> foi exibido no terminal onde o
+        servidor foi iniciado. Ele garante que apenas quem tem acesso à máquina
+        do sistema possa definir a senha.
+      </div>
+
+      <form method="post" class="login-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="login-field">
+          <label for="codigo">Código de segurança</label>
+          <input
+            id="codigo"
+            name="codigo"
+            type="text"
+            class="setup-code-input"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="9"
+            placeholder="XXXX-XXXX"
+            required
+            autofocus
+          >
+        </div>
+
+        <div class="login-field">
+          <label for="nova_senha">Senha de acesso</label>
+          <input id="nova_senha" name="nova_senha" type="password" autocomplete="new-password" minlength="10" required>
+          <p class="login-hint">Mínimo de 10 caracteres.</p>
+        </div>
+
+        <div class="login-field">
+          <label for="confirmar_senha">Confirmar senha</label>
+          <input id="confirmar_senha" name="confirmar_senha" type="password" autocomplete="new-password" minlength="10" required>
+        </div>
+
+        <button type="submit" class="login-button">Definir senha e concluir</button>
+      </form>
+    </div>
+  </div>
+</div>
+<script nonce="{{ csp_nonce }}">
+  document.querySelectorAll('[data-auto-dismiss]').forEach((alert) => {
+    setTimeout(() => {
+      alert.style.transition = 'opacity 200ms ease, transform 200ms ease';
+      alert.style.opacity = '0';
+      alert.style.transform = 'translateY(-4px)';
+      setTimeout(() => alert.remove(), 220);
+    }, 3000);
+  });
+</script>
+{% endblock %}

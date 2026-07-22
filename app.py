@@ -26,12 +26,15 @@ from db import (
     BASE_DIR,
     DATABASE,
     MIN_PASSWORD_LENGTH,
+    clear_setup_token,
     criar_backup,
+    ensure_setup_token,
     garantir_senha_inicial,
     get_db_connection,
     get_senha_hash,
     init_db,
     set_senha_hash,
+    verify_setup_token,
 )
 
 load_dotenv()
@@ -575,8 +578,56 @@ def get_house_or_404(casa_id):
     return casa
 
 
+@app.route("/setup", methods=["GET", "POST"])
+def setup():
+    # Uso único e irreversível: com senha configurada, /setup redireciona
+    # para o login para sempre.
+    if get_senha_hash():
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        client_ip = request.remote_addr or "desconhecido"
+        if login_bloqueado(client_ip):
+            flash("Muitas tentativas. Aguarde um minuto antes de tentar novamente.", "danger")
+            return render_template("setup.html"), 429
+
+        codigo = request.form.get("codigo", "")
+        nova_senha = request.form.get("nova_senha", "")
+        confirmar_senha = request.form.get("confirmar_senha", "")
+
+        if len(nova_senha) < MIN_PASSWORD_LENGTH:
+            flash(f"A senha deve ter pelo menos {MIN_PASSWORD_LENGTH} caracteres.", "danger")
+            return render_template("setup.html")
+
+        if nova_senha != confirmar_senha:
+            flash("A confirmação não corresponde à senha.", "danger")
+            return render_template("setup.html")
+
+        if not verify_setup_token(codigo):
+            registrar_falha_login(client_ip)
+            logger.warning("Código de configuração inicial inválido a partir de %s", client_ip)
+            flash("Código de segurança inválido. Confira o valor exibido no terminal do servidor.", "danger")
+            return render_template("setup.html")
+
+        set_senha_hash(generate_password_hash(nova_senha))
+        clear_setup_token()
+        logger.info("Senha inicial definida via /setup a partir de %s", client_ip)
+        flash("Senha definida com sucesso. Entre no sistema.", "success")
+        return redirect(url_for("login"))
+
+    # Garante que o código exista (e esteja no terminal/instance) enquanto a
+    # tela estiver aberta — mesmo que o servidor tenha reiniciado no meio.
+    ensure_setup_token()
+    return render_template("setup.html")
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    # Instalação recém-criada: não existe senha para conferir — o assistente
+    # de primeiro acesso assume.
+    if get_senha_hash() is None:
+        return redirect(url_for("setup"))
+
     if session.get("usuario_autenticado"):
         return redirect(url_for("index"))
 
@@ -1528,8 +1579,27 @@ def exportar_pdf():
 
 
 if __name__ == "__main__":
+    import sys
+
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+
     init_db()
-    garantir_senha_inicial(BOOTSTRAP_PASSWORD_HASH)
+    if not garantir_senha_inicial(BOOTSTRAP_PASSWORD_HASH):
+        codigo_setup = ensure_setup_token()
+        # print, não logger: este é o canal de entrega do código — precisa
+        # saltar aos olhos de quem acabou de rodar `python app.py`.
+        print()
+        print("=" * 62)
+        print("  PRIMEIRO ACESSO — nenhuma senha configurada ainda.")
+        print()
+        print(f"  Código de segurança:  {codigo_setup}")
+        print()
+        print("  Abra o sistema no navegador e informe este código na tela")
+        print("  de configuração inicial para definir a senha de acesso.")
+        print("=" * 62)
+        print()
     try:
         criar_backup("inicializacao")
     except (sqlite3.Error, OSError) as exc:
