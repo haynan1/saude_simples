@@ -107,6 +107,10 @@
       <table class="w-full text-sm">
         <thead>
           <tr class="bg-slate-50 text-left">
+            <th class="pl-4 pr-1 py-2.5 w-8">
+              <input type="checkbox" class="bulk-check" data-bulk-check-all
+                     aria-label="Selecionar todos os pacientes da lista" title="Selecionar todos">
+            </th>
             <th class="px-4 py-2.5 font-semibold text-slate-600">Nome</th>
             <th class="px-4 py-2.5 font-semibold text-slate-600">Casa</th>
             <th class="px-4 py-2.5 font-semibold text-slate-600">CPF/CNS</th>
@@ -119,6 +123,11 @@
           {% for paciente in pacientes %}
             {% set status = paciente|status_codigo %}
             <tr class="table-row hover:bg-slate-50">
+              <td class="pl-4 pr-1 py-2.5 w-8">
+                <input type="checkbox" class="bulk-check" data-bulk-check
+                       name="paciente_ids" value="{{ paciente.id }}" form="bulk-form"
+                       aria-label="Selecionar {{ paciente.nome }}">
+              </td>
               <td class="px-4 py-2.5">
                 <p class="font-semibold text-slate-900">{{ paciente.nome }}</p>
                 {% if paciente.telefone %}
@@ -188,6 +197,31 @@
     <a class="btn-primary" href="{{ url_for('index') }}">Ir para o painel</a>
   </div>
 {% endif %}
+
+{# Barra de ação em massa: aparece quando há pacientes selecionados. Os
+   checkboxes das linhas pertencem a este form via form="bulk-form". #}
+<form
+  id="bulk-form"
+  class="bulk-bar"
+  method="post"
+  action="{{ url_for('alterar_status_em_massa') }}"
+  hidden
+  data-confirm="A situação escolhida será aplicada a todos os pacientes selecionados. Nenhum cadastro é apagado — dá para reverter."
+  data-confirm-title="Alterar situação em massa?"
+  data-confirm-label="Sim, aplicar"
+>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+  <span class="bulk-bar-count" data-bulk-count aria-live="polite">0 selecionados</span>
+  <select class="bulk-bar-select" name="status" required aria-label="Situação a aplicar aos selecionados">
+    <option value="" selected disabled>Mudar situação para…</option>
+    {% for opcao in opcoes_status_paciente %}
+      <option value="{{ opcao.codigo }}">{{ opcao.label }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn-primary bulk-bar-apply">Aplicar</button>
+  <button type="button" class="bulk-bar-clear" data-bulk-clear>Cancelar</button>
+</form>
 
 {% include "_modal_transferencia.html" %}
 {% endblock %}

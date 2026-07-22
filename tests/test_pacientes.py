@@ -101,6 +101,70 @@ def test_reativar_paciente(logged_client):
 
 
 # ---------------------------------------------------------------------------
+# Alteração de status em massa
+# ---------------------------------------------------------------------------
+def test_status_em_massa_altera_apenas_selecionados(logged_client):
+    criar_casa(logged_client)
+    criar_paciente(logged_client, nome="Um", cpf="11111111111")
+    criar_paciente(logged_client, nome="Dois", cpf="22222222222")
+    criar_paciente(logged_client, nome="Três", cpf="33333333333")
+
+    resp = logged_client.post(
+        "/pacientes/status-em-massa",
+        data={"status": "mudou_se", "paciente_ids": ["1", "2"]},
+    )
+    assert resp.status_code == 302
+
+    conn = db.get_db_connection()
+    status = {
+        row["nome"]: row["status"]
+        for row in conn.execute("SELECT nome, status FROM pacientes").fetchall()
+    }
+    conn.close()
+    assert status == {"Um": "mudou_se", "Dois": "mudou_se", "Três": "ativo"}
+    # Mutação em lote sempre cria backup antes.
+    assert any("antes_status_em_massa" in b["nome"] for b in db.listar_backups())
+
+
+def test_status_em_massa_reativa_em_lote(logged_client):
+    criar_casa(logged_client)
+    criar_paciente(logged_client, nome="Um", cpf="11111111111")
+    criar_paciente(logged_client, nome="Dois", cpf="22222222222")
+    logged_client.post("/pacientes/status-em-massa", data={"status": "obito", "paciente_ids": ["1", "2"]})
+    logged_client.post("/pacientes/status-em-massa", data={"status": "ativo", "paciente_ids": ["1", "2"]})
+
+    conn = db.get_db_connection()
+    total_ativos = conn.execute(
+        "SELECT COUNT(*) AS c FROM pacientes WHERE status = 'ativo'"
+    ).fetchone()["c"]
+    conn.close()
+    assert total_ativos == 2
+
+
+def test_status_em_massa_valida_entrada(logged_client):
+    criar_casa(logged_client)
+    criar_paciente(logged_client)
+
+    # Status inválido: nada muda.
+    logged_client.post(
+        "/pacientes/status-em-massa", data={"status": "hackeado", "paciente_ids": ["1"]}
+    )
+    assert _status_de()["status"] == "ativo"
+
+    # Sem seleção: nada muda, redirect amigável.
+    resp = logged_client.post("/pacientes/status-em-massa", data={"status": "obito"})
+    assert resp.status_code == 302
+    assert _status_de()["status"] == "ativo"
+
+    # IDs não numéricos são ignorados sem quebrar.
+    logged_client.post(
+        "/pacientes/status-em-massa",
+        data={"status": "obito", "paciente_ids": ["abc", "1; DROP TABLE pacientes"]},
+    )
+    assert _status_de()["status"] == "ativo"
+
+
+# ---------------------------------------------------------------------------
 # Unicidade de CPF/CNS
 # ---------------------------------------------------------------------------
 def test_cpf_duplicado_rejeitado_no_cadastro(logged_client):

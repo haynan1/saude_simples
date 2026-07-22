@@ -1439,6 +1439,59 @@ def alterar_status_paciente(paciente_id):
     return redirect(destino)
 
 
+@app.route("/pacientes/status-em-massa", methods=["POST"])
+@login_required
+def alterar_status_em_massa():
+    destino = proxima_url_segura(request.form.get("next"))
+    status = request.form.get("status", "").strip()
+    if status not in STATUS_PACIENTE_POR_CODIGO:
+        flash("Escolha a situação a aplicar.", "danger")
+        return redirect(destino)
+
+    ids = []
+    for valor in request.form.getlist("paciente_ids"):
+        try:
+            ids.append(int(valor))
+        except ValueError:
+            continue
+    if not ids:
+        flash("Selecione pelo menos um paciente.", "warning")
+        return redirect(destino)
+
+    # Mutação em lote: backup antes, como toda operação de largo alcance.
+    try:
+        criar_backup("antes_status_em_massa")
+    except (sqlite3.Error, OSError) as exc:
+        logger.error("Falha ao criar backup antes de alterar status em massa: %s", exc)
+        flash("Não foi possível criar backup de segurança. Alteração cancelada.", "danger")
+        return redirect(destino)
+
+    conn = get_db_connection()
+    alterados = 0
+    # Em blocos: o limite de parâmetros do SQLite nunca é atingido, qualquer
+    # que seja o tamanho da seleção.
+    for inicio in range(0, len(ids), 500):
+        bloco = ids[inicio:inicio + 500]
+        marcadores = ",".join("?" * len(bloco))
+        cursor = conn.execute(
+            f"UPDATE pacientes SET status = ? WHERE id IN ({marcadores})",
+            [status, *bloco],
+        )
+        alterados += cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    logger.info(
+        "Status em massa (%s): %s paciente(s) → %s", request.remote_addr, alterados, status
+    )
+    flash(
+        f"{alterados} paciente(s) agora como “{status_paciente_label(status)}”. "
+        "Cadastros nunca são apagados — dá para reverter um a um ou em massa.",
+        "success",
+    )
+    return redirect(destino)
+
+
 @app.route("/paciente/<int:paciente_id>/transferir", methods=["POST"])
 @login_required
 def transferir_paciente(paciente_id):

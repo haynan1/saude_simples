@@ -263,6 +263,54 @@
   });
 
   // ---------------------------------------------------------------------------
+  // Seleção em massa (lista de pacientes) — os checkboxes das linhas pertencem
+  // ao form #bulk-form via form=""; a barra aparece quando há seleção.
+  // ---------------------------------------------------------------------------
+  function bulkForm() {
+    return document.getElementById('bulk-form');
+  }
+
+  function updateBulkBar() {
+    const bar = bulkForm();
+    if (!bar) return;
+
+    const checks = [...document.querySelectorAll('[data-bulk-check]')];
+    const count = checks.filter((check) => check.checked).length;
+
+    const label = bar.querySelector('[data-bulk-count]');
+    if (label) label.textContent = count === 1 ? '1 selecionado' : `${count} selecionados`;
+    bar.dataset.confirmTitle = `Alterar situação de ${count} paciente(s)?`;
+    bar.hidden = count === 0;
+
+    const all = document.querySelector('[data-bulk-check-all]');
+    if (all) {
+      all.checked = count > 0 && count === checks.length;
+      all.indeterminate = count > 0 && count < checks.length;
+    }
+  }
+
+  document.addEventListener('change', (event) => {
+    if (event.target.closest('[data-bulk-check-all]')) {
+      const marcado = event.target.checked;
+      document.querySelectorAll('[data-bulk-check]').forEach((check) => {
+        check.checked = marcado;
+      });
+      updateBulkBar();
+      return;
+    }
+    if (event.target.closest('[data-bulk-check]')) updateBulkBar();
+  });
+
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('[data-bulk-clear]')) {
+      document.querySelectorAll('[data-bulk-check]').forEach((check) => {
+        check.checked = false;
+      });
+      updateBulkBar();
+    }
+  });
+
+  // ---------------------------------------------------------------------------
   // Copiar dados do paciente
   // ---------------------------------------------------------------------------
   function copyText(text) {

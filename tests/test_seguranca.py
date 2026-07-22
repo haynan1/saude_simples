@@ -43,6 +43,7 @@ ROTAS_PROTEGIDAS_POST = [
     "/paciente/1/excluir",
     "/paciente/1/status",
     "/paciente/1/transferir",
+    "/pacientes/status-em-massa",
     "/casa/1/transferir",
     "/pacientes/importar",
     "/conta/senha",
