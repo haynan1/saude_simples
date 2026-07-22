@@ -101,6 +101,16 @@ def test_tipo_de_imovel_no_cadastro_e_nas_telas(logged_client):
     assert "Loja" in logged_client.get("/").get_data(as_text=True)
     assert "Loja" in logged_client.get("/casa/1").get_data(as_text=True)
 
+    # Demais tipos comerciais/comunitários seguem o mesmo caminho.
+    for numero, (codigo, label) in enumerate(
+        [("igreja", "Igreja"), ("pizzaria", "Pizzaria"), ("hamburgueria", "Hamburgueria")], start=2
+    ):
+        logged_client.post(
+            "/casa/nova",
+            data={"endereco": f"Ponto {numero}", "numero_casa": str(numero), "quadra_id": "", "tipo_imovel": codigo},
+        )
+        assert label in logged_client.get(f"/casa/{numero}").get_data(as_text=True)
+
 
 def test_tipo_de_imovel_editavel(logged_client):
     criar_casa(logged_client)  # domicílio por padrão

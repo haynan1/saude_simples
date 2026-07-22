@@ -222,6 +222,9 @@ TIPOS_IMOVEL_OPCOES = [
     {"codigo": "lava_jato", "label": "Lava Jato"},
     {"codigo": "terreno_baldio", "label": "Terreno Baldio"},
     {"codigo": "escola", "label": "Escola"},
+    {"codigo": "igreja", "label": "Igreja"},
+    {"codigo": "pizzaria", "label": "Pizzaria"},
+    {"codigo": "hamburgueria", "label": "Hamburgueria"},
     {"codigo": "em_construcao", "label": "Em construção"},
 ]
 TIPOS_IMOVEL_POR_CODIGO = {opcao["codigo"]: opcao["label"] for opcao in TIPOS_IMOVEL_OPCOES}
