@@ -141,6 +141,9 @@ def generate_certificate(extra_addresses: list[str] | None = None) -> dict:
             encryption_algorithm=serialization.NoEncryption(),
         )
     )
+    # Chave privada sem criptografia: permissão restrita ao dono (no Windows o
+    # efeito é limitado, mas mantém o contrato em qualquer SO).
+    os.chmod(KEY_FILE, 0o600)
     CERT_FILE.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
     logger.info("TLS_CERT_GENERATED ips=%s dns=%s", ip_addresses, dns_names)
 

@@ -306,6 +306,18 @@ def test_setup_desativado_com_senha_configurada(client):
     assert "/login" in resp.headers["Location"]
 
 
+def test_payload_gigante_rejeitado_com_413(logged_client):
+    # Limite global de 1MB: um POST de 2MB nem chega ao parsing do form.
+    resp = logged_client.post(
+        "/quadra/nova",
+        data={"numero_quadra": "1", "lixo": "x" * (2 * 1024 * 1024)},
+    )
+    assert resp.status_code == 302  # handler amigável redireciona com flash
+    assert not db.get_db_connection().execute(
+        "SELECT 1 FROM quadras"
+    ).fetchone()  # nada foi gravado
+
+
 def test_pagina_login_nao_referencia_cdn(client):
     body = client.get("/login").get_data(as_text=True)
     assert "cdn.jsdelivr" not in body
