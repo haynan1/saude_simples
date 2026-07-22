@@ -3062,6 +3062,41 @@ body.confirm-dialog-open { overflow: hidden; }
 
 /* Botões compactos dos cartões (casas/quadras) e variante de perigo discreta. */
 .house-tile-btn { border-radius: 0.6rem; font-size: 0.78rem; min-height: 2.1rem; padding: 0.35rem 0.7rem; }
+
+/* Situação do paciente: menu suspenso compacto com cor semântica por estado.
+   A mudança aplica na hora (data-submit-on-change) — sem botão extra. */
+.status-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2364748b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 0.7rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.6rem;
+  color: #334155;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  min-height: 2.1rem;
+  padding: 0.35rem 1.7rem 0.35rem 0.7rem;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.status-select:focus {
+  border-color: var(--accent);
+  outline: 3px solid var(--ring);
+  outline-offset: 0;
+}
+.status-select--ativo { background-color: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+.status-select--mudou_se { background-color: #fffbeb; border-color: #fde68a; color: #b45309; }
+.status-select--fora_de_area { background-color: #f1f5f9; border-color: #e2e8f0; color: #475569; }
+.status-select--obito { background-color: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.theme-dark .status-select { background-color: #0b1220; border-color: #334155; color: #cbd5e1; }
+.theme-dark .status-select--ativo { background-color: rgba(34, 197, 94, 0.08); border-color: rgba(34, 197, 94, 0.35); color: #4ade80; }
+.theme-dark .status-select--mudou_se { background-color: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.35); color: #fbbf24; }
+.theme-dark .status-select--fora_de_area { background-color: rgba(148, 163, 184, 0.08); border-color: rgba(148, 163, 184, 0.3); color: #94a3b8; }
+.theme-dark .status-select--obito { background-color: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.35); color: #f87171; }
 .btn-danger-outline {
   align-items: center;
   background: transparent;

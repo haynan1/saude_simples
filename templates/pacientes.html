@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from "_status_paciente.html" import badge_status %}
 {% block title %}Pacientes{% endblock %}
 
 {% block content %}
@@ -21,34 +20,34 @@
 <!-- Situação cadastral: contagens que também filtram -->
 <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mb-8">
   <a href="{{ url_for('listar_pacientes') }}"
-     class="rounded-xl border p-4 transition-colors {{ 'border-blue-200 bg-blue-50' if not status_filtro else 'border-slate-200 bg-white hover:bg-slate-50' }}">
-    <p class="text-xs font-semibold uppercase tracking-wide {{ 'text-blue-700' if not status_filtro else 'text-slate-500' }}">Todos</p>
-    <p class="text-2xl font-bold mt-1 {{ 'text-blue-900' if not status_filtro else 'text-slate-900' }}">{{ total_geral }}</p>
-    <p class="text-xs mt-0.5 {{ 'text-blue-700' if not status_filtro else 'text-slate-500' }}">Cadastros guardados</p>
+     class="rounded-xl border p-3 transition-colors {{ 'border-blue-200 bg-blue-50' if not status_filtro else 'border-slate-200 bg-white hover:bg-slate-50' }}">
+    <p class="text-[10px] font-bold uppercase tracking-wider {{ 'text-blue-700' if not status_filtro else 'text-slate-500' }}">Todos</p>
+    <p class="text-xl font-bold mt-1 {{ 'text-blue-900' if not status_filtro else 'text-slate-900' }}">{{ total_geral }}</p>
+    <p class="text-[11px] mt-0.5 {{ 'text-blue-700' if not status_filtro else 'text-slate-500' }}">Cadastros guardados</p>
   </a>
   <a href="{{ url_for('listar_pacientes', status='ativo') }}"
-     class="rounded-xl border p-4 transition-colors {{ 'border-green-200 bg-green-50' if status_filtro == 'ativo' else 'border-slate-200 bg-white hover:bg-slate-50' }}">
-    <p class="text-xs font-semibold uppercase tracking-wide {{ 'text-green-700' if status_filtro == 'ativo' else 'text-slate-500' }}">Ativos</p>
-    <p class="text-2xl font-bold mt-1 {{ 'text-green-700' if status_filtro == 'ativo' else 'text-slate-900' }}">{{ contagem_status['ativo'] }}</p>
-    <p class="text-xs mt-0.5 {{ 'text-green-700' if status_filtro == 'ativo' else 'text-slate-500' }}">Moram no território</p>
+     class="rounded-xl border p-3 transition-colors {{ 'border-green-200 bg-green-50' if status_filtro == 'ativo' else 'border-slate-200 bg-white hover:bg-slate-50' }}">
+    <p class="text-[10px] font-bold uppercase tracking-wider {{ 'text-green-700' if status_filtro == 'ativo' else 'text-slate-500' }}">Ativos</p>
+    <p class="text-xl font-bold mt-1 {{ 'text-green-700' if status_filtro == 'ativo' else 'text-slate-900' }}">{{ contagem_status['ativo'] }}</p>
+    <p class="text-[11px] mt-0.5 {{ 'text-green-700' if status_filtro == 'ativo' else 'text-slate-500' }}">Moram no território</p>
   </a>
   <a href="{{ url_for('listar_pacientes', status='mudou_se') }}"
-     class="rounded-xl border p-4 transition-colors {{ 'border-amber-200 bg-amber-50' if status_filtro == 'mudou_se' else 'border-slate-200 bg-white hover:bg-slate-50' }}">
-    <p class="text-xs font-semibold uppercase tracking-wide {{ 'text-amber-700' if status_filtro == 'mudou_se' else 'text-slate-500' }}">Mudou-se</p>
-    <p class="text-2xl font-bold mt-1 {{ 'text-amber-700' if status_filtro == 'mudou_se' else 'text-slate-900' }}">{{ contagem_status['mudou_se'] }}</p>
-    <p class="text-xs mt-0.5 {{ 'text-amber-700' if status_filtro == 'mudou_se' else 'text-slate-500' }}">Saíram do endereço</p>
+     class="rounded-xl border p-3 transition-colors {{ 'border-amber-200 bg-amber-50' if status_filtro == 'mudou_se' else 'border-slate-200 bg-white hover:bg-slate-50' }}">
+    <p class="text-[10px] font-bold uppercase tracking-wider {{ 'text-amber-700' if status_filtro == 'mudou_se' else 'text-slate-500' }}">Mudou-se</p>
+    <p class="text-xl font-bold mt-1 {{ 'text-amber-700' if status_filtro == 'mudou_se' else 'text-slate-900' }}">{{ contagem_status['mudou_se'] }}</p>
+    <p class="text-[11px] mt-0.5 {{ 'text-amber-700' if status_filtro == 'mudou_se' else 'text-slate-500' }}">Saíram do endereço</p>
   </a>
   <a href="{{ url_for('listar_pacientes', status='fora_de_area') }}"
-     class="rounded-xl border p-4 transition-colors {{ 'border-slate-200 bg-slate-100' if status_filtro == 'fora_de_area' else 'border-slate-200 bg-white hover:bg-slate-50' }}">
-    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Fora de Área</p>
-    <p class="text-2xl font-bold text-slate-900 mt-1">{{ contagem_status['fora_de_area'] }}</p>
-    <p class="text-xs text-slate-500 mt-0.5">Fora da cobertura</p>
+     class="rounded-xl border p-3 transition-colors {{ 'border-slate-200 bg-slate-100' if status_filtro == 'fora_de_area' else 'border-slate-200 bg-white hover:bg-slate-50' }}">
+    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fora de Área</p>
+    <p class="text-xl font-bold text-slate-900 mt-1">{{ contagem_status['fora_de_area'] }}</p>
+    <p class="text-[11px] text-slate-500 mt-0.5">Fora da cobertura</p>
   </a>
   <a href="{{ url_for('listar_pacientes', status='obito') }}"
-     class="rounded-xl border p-4 transition-colors {{ 'border-red-200 bg-red-50' if status_filtro == 'obito' else 'border-slate-200 bg-white hover:bg-slate-50' }}">
-    <p class="text-xs font-semibold uppercase tracking-wide {{ 'text-red-700' if status_filtro == 'obito' else 'text-slate-500' }}">Óbito</p>
-    <p class="text-2xl font-bold mt-1 {{ 'text-red-700' if status_filtro == 'obito' else 'text-slate-900' }}">{{ contagem_status['obito'] }}</p>
-    <p class="text-xs mt-0.5 {{ 'text-red-700' if status_filtro == 'obito' else 'text-slate-500' }}">Registros em memória</p>
+     class="rounded-xl border p-3 transition-colors {{ 'border-red-200 bg-red-50' if status_filtro == 'obito' else 'border-slate-200 bg-white hover:bg-slate-50' }}">
+    <p class="text-[10px] font-bold uppercase tracking-wider {{ 'text-red-700' if status_filtro == 'obito' else 'text-slate-500' }}">Óbito</p>
+    <p class="text-xl font-bold mt-1 {{ 'text-red-700' if status_filtro == 'obito' else 'text-slate-900' }}">{{ contagem_status['obito'] }}</p>
+    <p class="text-[11px] mt-0.5 {{ 'text-red-700' if status_filtro == 'obito' else 'text-slate-500' }}">Registros em memória</p>
   </a>
 </div>
 
@@ -108,25 +107,25 @@
       <table class="w-full text-sm">
         <thead>
           <tr class="bg-slate-50 text-left">
-            <th class="px-4 py-3 font-semibold text-slate-600">Nome</th>
-            <th class="px-4 py-3 font-semibold text-slate-600">Casa</th>
-            <th class="px-4 py-3 font-semibold text-slate-600">CPF/CNS</th>
-            <th class="px-4 py-3 font-semibold text-slate-600">Nascimento</th>
-            <th class="px-4 py-3 font-semibold text-slate-600">Situação</th>
-            <th class="px-4 py-3 font-semibold text-slate-600 text-right">Ações</th>
+            <th class="px-4 py-2.5 font-semibold text-slate-600">Nome</th>
+            <th class="px-4 py-2.5 font-semibold text-slate-600">Casa</th>
+            <th class="px-4 py-2.5 font-semibold text-slate-600">CPF/CNS</th>
+            <th class="px-4 py-2.5 font-semibold text-slate-600">Nascimento</th>
+            <th class="px-4 py-2.5 font-semibold text-slate-600">Situação</th>
+            <th class="px-4 py-2.5 font-semibold text-slate-600 text-right">Ações</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
           {% for paciente in pacientes %}
             {% set status = paciente|status_codigo %}
             <tr class="table-row hover:bg-slate-50">
-              <td class="px-4 py-3">
+              <td class="px-4 py-2.5">
                 <p class="font-semibold text-slate-900">{{ paciente.nome }}</p>
                 {% if paciente.telefone %}
                   <p class="text-xs text-slate-500">{{ paciente.telefone|telefone }}</p>
                 {% endif %}
               </td>
-              <td class="px-4 py-3 whitespace-nowrap">
+              <td class="px-4 py-2.5 whitespace-nowrap">
                 {% if paciente.casa_id %}
                   <a class="text-blue-600 hover:underline font-semibold" href="{{ url_for('detalhes_casa', casa_id=paciente.casa_id) }}">Casa {{ paciente.numero_casa }}</a>
                   <p class="text-xs text-slate-500">{{ 'Quadra ' ~ paciente.numero_quadra if paciente.numero_quadra else 'Sem quadra' }}</p>
@@ -134,44 +133,24 @@
                   <span class="text-slate-400">—</span>
                 {% endif %}
               </td>
-              <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ paciente.cpf|cpf_cns }}</td>
-              <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ paciente.data_nascimento|data_br }}</td>
-              <td class="px-4 py-3 whitespace-nowrap">{{ badge_status(status) }}</td>
-              <td class="px-4 py-3">
+              <td class="px-4 py-2.5 whitespace-nowrap text-slate-600">{{ paciente.cpf|cpf_cns }}</td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-slate-600">{{ paciente.data_nascimento|data_br }}</td>
+              <td class="px-4 py-2.5 whitespace-nowrap">
+                {# Menu suspenso de situação: mostra o estado atual e aplica a
+                   mudança na hora — reversível, o flash confirma o que houve. #}
+                <form method="post" action="{{ url_for('alterar_status_paciente', paciente_id=paciente.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                  <select class="status-select status-select--{{ status }}" name="status" data-submit-on-change
+                          aria-label="Situação de {{ paciente.nome }}" title="Mudar a situação de {{ paciente.nome }}">
+                    {% for opcao in opcoes_status_paciente %}
+                      <option value="{{ opcao.codigo }}" {% if status == opcao.codigo %}selected{% endif %}>{{ opcao.label }}</option>
+                    {% endfor %}
+                  </select>
+                </form>
+              </td>
+              <td class="px-4 py-2.5">
                 <div class="flex items-center justify-end gap-1.5 flex-wrap" role="group" aria-label="Ações do paciente {{ paciente.nome }}">
-                  {% if status == 'ativo' %}
-                    <form method="post" action="{{ url_for('alterar_status_paciente', paciente_id=paciente.id) }}"
-                          data-confirm="O cadastro fica guardado como “Mudou-se”, fora das contagens do território."
-                          data-confirm-title="{{ paciente.nome }} mudou-se?">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <input type="hidden" name="status" value="mudou_se">
-                      <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
-                      <button class="btn-secondary house-tile-btn" type="submit" title="Marcar {{ paciente.nome }} como Mudou-se">Mudou-se</button>
-                    </form>
-                    <form method="post" action="{{ url_for('alterar_status_paciente', paciente_id=paciente.id) }}"
-                          data-confirm="O cadastro fica guardado como “Fora de Área”, fora das contagens do território."
-                          data-confirm-title="{{ paciente.nome }} está fora de área?">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <input type="hidden" name="status" value="fora_de_area">
-                      <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
-                      <button class="btn-secondary house-tile-btn" type="submit" title="Marcar {{ paciente.nome }} como Fora de Área">Fora de área</button>
-                    </form>
-                    <form method="post" action="{{ url_for('alterar_status_paciente', paciente_id=paciente.id) }}"
-                          data-confirm="O cadastro fica guardado como “Óbito”, fora das contagens do território."
-                          data-confirm-title="Registrar óbito de {{ paciente.nome }}?">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <input type="hidden" name="status" value="obito">
-                      <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
-                      <button class="btn-danger-outline house-tile-btn" type="submit" title="Registrar óbito de {{ paciente.nome }}">Óbito</button>
-                    </form>
-                  {% else %}
-                    <form method="post" action="{{ url_for('alterar_status_paciente', paciente_id=paciente.id) }}">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <input type="hidden" name="status" value="ativo">
-                      <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
-                      <button class="btn-secondary house-tile-btn" type="submit" title="Reativar {{ paciente.nome }}">Reativar</button>
-                    </form>
-                  {% endif %}
                   {% if status != 'obito' %}
                     <button
                       class="btn-secondary house-tile-btn"
