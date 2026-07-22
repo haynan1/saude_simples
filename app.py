@@ -218,6 +218,7 @@ def requisicao_e_local():
 
 TIPOS_IMOVEL_OPCOES = [
     {"codigo": "domicilio", "label": "Domicílio"},
+    {"codigo": "apartamento", "label": "Apartamento"},
     {"codigo": "loja", "label": "Loja"},
     {"codigo": "lava_jato", "label": "Lava Jato"},
     {"codigo": "terreno_baldio", "label": "Terreno Baldio"},
@@ -228,6 +229,9 @@ TIPOS_IMOVEL_OPCOES = [
     {"codigo": "em_construcao", "label": "Em construção"},
 ]
 TIPOS_IMOVEL_POR_CODIGO = {opcao["codigo"]: opcao["label"] for opcao in TIPOS_IMOVEL_OPCOES}
+
+# Tipos onde mora gente: sem morador cadastrado, contam como "vazia" no painel.
+TIPOS_IMOVEL_RESIDENCIAIS = {"domicilio", "apartamento"}
 
 
 def normalizar_tipo_imovel(value):
@@ -516,12 +520,12 @@ def calcular_idade(data_nascimento):
 
 def build_dashboard_stats(casas, pacientes):
     total_casas = len(casas)
-    # "Vazia" é um achado de campo apenas para domicílio — loja, escola ou
-    # terreno baldio sem morador é o esperado, não um alerta.
+    # "Vazia" é um achado de campo apenas para imóvel residencial — loja,
+    # escola ou terreno baldio sem morador é o esperado, não um alerta.
     casas_vazias = sum(
         1
         for casa in casas
-        if casa["total_pacientes"] == 0 and tipo_imovel_de(casa) == "domicilio"
+        if casa["total_pacientes"] == 0 and tipo_imovel_de(casa) in TIPOS_IMOVEL_RESIDENCIAIS
     )
     total_pacientes = len(pacientes)
     criancas = sum(1 for paciente in pacientes if (calcular_idade(paciente["data_nascimento"]) or 999) < 12)
@@ -631,6 +635,7 @@ def inject_options():
     return {
         "opcoes_condicoes_saude": CONDICOES_SAUDE_OPCOES,
         "opcoes_tipos_imovel": TIPOS_IMOVEL_OPCOES,
+        "tipos_imovel_residenciais": TIPOS_IMOVEL_RESIDENCIAIS,
     }
 
 

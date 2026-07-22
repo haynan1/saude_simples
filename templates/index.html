@@ -121,13 +121,11 @@
               <div class="flex flex-wrap justify-end gap-1.5 shrink-0">
                 {% if tipo != 'domicilio' %}
                   <span class="rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-700">{{ tipo|tipo_imovel }}</span>
-                  {% if casa.total_pacientes > 0 %}
-                    <span class="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs font-bold text-blue-700">{{ casa.total_pacientes }} pac.</span>
-                  {% endif %}
-                {% elif casa.total_pacientes == 0 %}
-                  <span class="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-bold text-slate-600">vazia</span>
-                {% else %}
+                {% endif %}
+                {% if casa.total_pacientes > 0 %}
                   <span class="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs font-bold text-blue-700">{{ casa.total_pacientes }} pac.</span>
+                {% elif tipo in tipos_imovel_residenciais %}
+                  <span class="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-bold text-slate-600">vazia</span>
                 {% endif %}
               </div>
             </div>

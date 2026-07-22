@@ -132,15 +132,19 @@ def test_tipo_de_imovel_invalido_vira_domicilio(logged_client):
     assert tipo == "domicilio"
 
 
-def test_vazias_conta_apenas_domicilios(logged_client):
-    # Domicílio sem morador = achado; terreno baldio sem morador = esperado.
+def test_vazias_conta_apenas_imoveis_residenciais(logged_client):
+    # Domicílio e apartamento sem morador = achado; terreno baldio = esperado.
     criar_casa(logged_client, endereco="Domicílio vazio", numero="1")
     logged_client.post(
         "/casa/nova",
-        data={"endereco": "Terreno da esquina", "numero_casa": "2", "quadra_id": "", "tipo_imovel": "terreno_baldio"},
+        data={"endereco": "Apto 101", "numero_casa": "2", "quadra_id": "", "tipo_imovel": "apartamento"},
+    )
+    logged_client.post(
+        "/casa/nova",
+        data={"endereco": "Terreno da esquina", "numero_casa": "3", "quadra_id": "", "tipo_imovel": "terreno_baldio"},
     )
     body = logged_client.get("/").get_data(as_text=True)
-    assert "1 vazia(s)" in body
+    assert "2 vazia(s)" in body
 
 
 def test_numeracao_automatica_por_quadra(logged_client):
