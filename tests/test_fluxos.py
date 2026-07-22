@@ -180,6 +180,14 @@ def test_painel_estatisticas(logged_client):
 # ---------------------------------------------------------------------------
 # Exportação
 # ---------------------------------------------------------------------------
+def test_pagina_exportar(logged_client):
+    body = logged_client.get("/exportar").get_data(as_text=True)
+    assert "Exportar relatório em PDF" in body
+    assert "export-condition" in body          # filtro de comorbidades presente
+    assert "exportFilteredPdfForm" in body     # form com prévia ao vivo
+    assert "Exportar tudo" in body
+
+
 def test_preview_geral_e_filtrado(logged_client):
     criar_casa(logged_client)
     criar_paciente(logged_client)

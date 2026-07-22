@@ -1,55 +1,20 @@
-// Interações próprias do Saúde Simples: modal de exportação em PDF (com prévia
-// ao vivo) e cópia rápida dos dados do paciente. Carregado como arquivo externo
-// por exigência da CSP (nenhum handler inline).
+// Interações próprias do Saúde Simples: página de exportação em PDF (prévia
+// ao vivo) e cópia rápida dos dados do paciente. Tudo por delegação no
+// document — os handlers sobrevivem às trocas parciais de página do
+// smooth-navigation. Carregado como arquivo externo por exigência da CSP.
 (() => {
   // ---------------------------------------------------------------------------
-  // Modal "Exportar PDF"
+  // Página "Exportar PDF"
   // ---------------------------------------------------------------------------
-  const dialog = document.getElementById('export-dialog');
-  const form = document.getElementById('exportFilteredPdfForm');
-  let previouslyFocused = null;
+  let exportPreviewController = null;
 
-  function openExportDialog() {
-    if (!dialog) return;
-    previouslyFocused = document.activeElement;
-    dialog.hidden = false;
-    dialog.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('confirm-dialog-open');
-    requestAnimationFrame(() => dialog.classList.add('is-visible'));
-    updateExportCount();
+  function exportForm() {
+    return document.getElementById('exportFilteredPdfForm');
   }
-
-  function closeExportDialog() {
-    if (!dialog || dialog.hidden) return;
-    dialog.classList.remove('is-visible');
-    dialog.hidden = true;
-    dialog.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('confirm-dialog-open');
-    previouslyFocused?.focus();
-  }
-
-  document.addEventListener('click', (event) => {
-    if (event.target.closest('[data-export-open]')) {
-      event.preventDefault();
-      openExportDialog();
-      return;
-    }
-    if (event.target.closest('[data-export-close]')) {
-      closeExportDialog();
-    }
-  });
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && dialog && !dialog.hidden) {
-      closeExportDialog();
-    }
-  });
 
   function getSelectedExportConditions() {
     return [...document.querySelectorAll('.export-condition:checked')];
   }
-
-  let exportPreviewController = null;
 
   function renderExportPreview(data) {
     const title = document.querySelector('.export-preview-title');
@@ -91,6 +56,7 @@
   }
 
   function updateExportPreview() {
+    const form = exportForm();
     if (!form?.dataset.previewUrl) return;
 
     const params = new URLSearchParams();
@@ -116,6 +82,8 @@
   }
 
   function updateExportCount() {
+    if (!exportForm()) return;
+
     const count = getSelectedExportConditions().length;
     const label = document.querySelector('.export-selected-count');
     const submitButton = document.querySelector('.export-selected-submit');
@@ -129,27 +97,32 @@
     updateExportPreview();
   }
 
-  document.querySelectorAll('.export-condition').forEach((option) => {
-    option.addEventListener('change', updateExportCount);
+  document.addEventListener('change', (event) => {
+    if (event.target.closest('.export-condition')) updateExportCount();
   });
 
-  document.querySelector('.export-select-all')?.addEventListener('click', () => {
-    document.querySelectorAll('.export-condition').forEach((option) => {
-      option.checked = true;
-    });
-    updateExportCount();
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('.export-select-all')) {
+      document.querySelectorAll('.export-condition').forEach((option) => {
+        option.checked = true;
+      });
+      updateExportCount();
+      return;
+    }
+    if (event.target.closest('.export-clear')) {
+      document.querySelectorAll('.export-condition').forEach((option) => {
+        option.checked = false;
+      });
+      updateExportCount();
+    }
   });
 
-  document.querySelector('.export-clear')?.addEventListener('click', () => {
-    document.querySelectorAll('.export-condition').forEach((option) => {
-      option.checked = false;
-    });
-    updateExportCount();
-  });
+  document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (form.id !== 'exportFilteredPdfForm') return;
 
-  form?.addEventListener('submit', (event) => {
-    const selected = getSelectedExportConditions();
     event.preventDefault();
+    const selected = getSelectedExportConditions();
     if (selected.length === 0) {
       updateExportCount();
       return;
@@ -159,6 +132,12 @@
     selected.forEach((option) => params.append('condicoes', option.value));
     window.location.href = `${form.action}?${params}`;
   });
+
+  // Prévia inicial: no carregamento completo e, via window.initExportPage,
+  // quando o smooth-navigation troca para a página de exportação (o script
+  // inline do template é reexecutado a cada troca).
+  window.initExportPage = updateExportCount;
+  document.addEventListener('DOMContentLoaded', updateExportCount);
 
   // ---------------------------------------------------------------------------
   // Copiar dados do paciente

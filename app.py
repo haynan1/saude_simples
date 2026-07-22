@@ -1152,6 +1152,12 @@ def excluir_paciente(paciente_id):
     return redirect(url_for("detalhes_casa", casa_id=casa_id))
 
 
+@app.route("/exportar")
+@login_required
+def exportar():
+    return render_template("exportar.html")
+
+
 @app.route("/exportar/preview")
 @login_required
 def preview_exportar_pdf():

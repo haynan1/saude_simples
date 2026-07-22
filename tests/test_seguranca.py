@@ -17,6 +17,7 @@ ROTAS_PROTEGIDAS_GET = [
     "/casa/1/editar",
     "/casa/1/paciente/novo",
     "/paciente/1/editar",
+    "/exportar",
     "/exportar/preview",
     "/exportar/pdf",
     "/conta/senha",

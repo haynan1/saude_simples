@@ -10,10 +10,10 @@
     <p class="text-sm text-slate-500 mt-1">Visão operacional do território, moradores e condições de saúde.</p>
   </div>
   <div class="flex flex-wrap items-center gap-2">
-    <button type="button" data-export-open class="btn-secondary">
+    <a href="{{ url_for('exportar') }}" class="btn-secondary">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 7H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V18a2 2 0 01-2 2z"/></svg>
       Exportar PDF
-    </button>
+    </a>
     <a href="{{ url_for('cadastrar_quadra') }}" class="btn-secondary">Nova quadra</a>
     <a href="{{ url_for('cadastrar_casa') }}" class="btn-primary">Nova casa</a>
   </div>

@@ -199,13 +199,13 @@
         <span x-show="!sidebarCollapsed" x-cloak>Nova quadra</span>
       </a>
 
-      <button type="button" data-export-open
-         class="w-full flex items-center py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white"
+      <a data-nav-link href="{{ url_for('exportar') }}"
+         class="flex items-center py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white {{ 'nav-active text-white' if current_endpoint == 'exportar' else '' }}"
          :class="sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3'"
          title="Exportar PDF">
         <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 7H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V18a2 2 0 01-2 2z"/></svg>
         <span x-show="!sidebarCollapsed" x-cloak>Exportar PDF</span>
-      </button>
+      </a>
 
       <a data-nav-link href="{{ url_for('banco') }}"
          class="flex items-center py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white {{ 'nav-active text-white' if current_endpoint == 'banco' else '' }}"
@@ -287,7 +287,7 @@
       <a href="{{ url_for('index') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Painel</a>
       <a href="{{ url_for('cadastrar_casa') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Nova casa</a>
       <a href="{{ url_for('cadastrar_quadra') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Nova quadra</a>
-      <button type="button" data-export-open class="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Exportar PDF</button>
+      <a href="{{ url_for('exportar') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Exportar PDF</a>
       <a href="{{ url_for('banco') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Banco de dados</a>
       <a href="{{ url_for('alterar_senha') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Alterar senha</a>
       <form method="post" action="{{ url_for('logout') }}" data-no-smooth>
@@ -452,72 +452,6 @@
         <button type="button" class="btn-primary" @click="$store.a11y.open = false">Concluir</button>
       </footer>
     </div>
-  </div>
-
-  <!-- Exportar PDF -->
-  <div id="export-dialog" class="export-dialog" hidden aria-hidden="true">
-    <div class="export-dialog-backdrop" data-export-close></div>
-    <section class="export-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="export-dialog-title">
-      <form method="get" action="{{ url_for('exportar_pdf') }}" id="exportFilteredPdfForm" data-no-smooth data-preview-url="{{ url_for('preview_exportar_pdf') }}">
-        <input type="hidden" name="filtrar" value="1">
-        <header class="export-dialog-head">
-          <div>
-            <p class="export-dialog-kicker">Relatório</p>
-            <h2 id="export-dialog-title" class="export-dialog-title">Exportar em PDF</h2>
-            <p class="export-dialog-sub">Exporte tudo ou filtre por comorbidades específicas.</p>
-          </div>
-          <button type="button" class="a11y-close" data-export-close aria-label="Fechar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-        </header>
-
-        <div class="export-dialog-body">
-          <div class="export-preview">
-            <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
-              <div class="min-w-0">
-                <strong class="export-preview-title text-sm">Prévia do relatório completo</strong>
-                <span class="export-preview-description block text-xs text-slate-500">Marque comorbidades para ver o recorte filtrado.</span>
-              </div>
-              <span class="export-preview-mode export-preview-mode-general">Geral</span>
-            </div>
-            <div class="export-preview-stats">
-              <div><span>Casas</span><strong data-preview-stat="total_casas">0</strong></div>
-              <div><span>Pacientes</span><strong data-preview-stat="total_pacientes">0</strong></div>
-              <div><span>Vazias</span><strong data-preview-stat="casas_vazias">0</strong></div>
-              <div><span>Crianças</span><strong data-preview-stat="criancas">0</strong></div>
-              <div><span>Idosos</span><strong data-preview-stat="idosos">0</strong></div>
-              <div><span>Gestantes</span><strong data-preview-stat="gestantes">0</strong></div>
-              <div><span>Homens</span><strong data-preview-stat="homens">0</strong></div>
-              <div><span>Mulheres</span><strong data-preview-stat="mulheres">0</strong></div>
-            </div>
-            <div class="export-preview-conditions">Nenhuma comorbidade selecionada.</div>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-2 mb-3">
-            <a class="btn-secondary export-inline-btn" href="{{ url_for('exportar_pdf') }}" data-no-smooth title="Exportar relatório completo sem filtros">Exportar tudo</a>
-            <button class="btn-secondary export-inline-btn export-select-all" type="button">Marcar todas</button>
-            <button class="btn-secondary export-inline-btn export-clear" type="button">Limpar</button>
-            <span class="export-selected-count text-xs text-slate-500 ml-auto">0 selecionada(s)</span>
-          </div>
-
-          <div class="export-options-grid">
-            {% for opcao in opcoes_condicoes_saude %}
-              <label class="export-option">
-                <input class="export-condition" type="checkbox" name="condicoes" value="{{ opcao.codigo }}">
-                <span>{{ opcao.label }}</span>
-              </label>
-            {% endfor %}
-          </div>
-        </div>
-
-        <footer class="export-dialog-foot">
-          <button type="button" class="btn-secondary" data-export-close>Cancelar</button>
-          <button type="submit" class="btn-primary export-selected-submit" disabled>Exportar selecionadas</button>
-        </footer>
-      </form>
-    </section>
   </div>
 
   <div id="confirm-dialog" class="confirm-dialog" hidden aria-hidden="true">
