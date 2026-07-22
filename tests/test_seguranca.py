@@ -111,6 +111,20 @@ def test_headers_de_seguranca(client):
     assert "frame-ancestors 'none'" in csp
 
 
+def test_hsts_apenas_sob_https(app, client):
+    # HTTP local: sem HSTS (não faz sentido e travaria o navegador no host).
+    resp = client.get("/login")
+    assert "Strict-Transport-Security" not in resp.headers
+
+    # Sob TLS (run.py liga FORCE_HTTPS → cookie Secure), HSTS entra.
+    app.config["SESSION_COOKIE_SECURE"] = True
+    try:
+        resp = client.get("/login")
+        assert resp.headers.get("Strict-Transport-Security") == "max-age=31536000"
+    finally:
+        app.config["SESSION_COOKIE_SECURE"] = False
+
+
 def test_nonce_do_csp_bate_com_html(client):
     resp = client.get("/login")
     csp = resp.headers["Content-Security-Policy"]

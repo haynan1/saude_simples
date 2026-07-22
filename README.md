@@ -36,10 +36,45 @@ Cole o valor gerado em `SAUDE_SIMPLES_SECRET_KEY=` no `.env`. Esse valor não pr
 ## Rodar o sistema
 
 ```bash
-python app.py
+python run.py
 ```
 
-Por padrão abre em `http://127.0.0.1:5001`. O banco de dados é criado automaticamente no primeiro boot.
+(`python app.py` continua funcionando — delega para o `run.py`. No Windows, o duplo-clique em `iniciar_servidor.bat` prepara o ambiente sozinho e inicia.)
+
+Por padrão abre em `http://127.0.0.1:5001`, **apenas neste computador**. O banco de dados é criado automaticamente no primeiro boot e o terminal mostra os endereços de acesso.
+
+## Rede WiFi local
+
+O padrão é privado (localhost). Para acessar de celulares/computadores na **mesma rede WiFi**:
+
+1. No `.env`, descomente `SAUDE_SIMPLES_COMPARTILHAR_REDE=true`
+2. Reinicie o servidor — o IP da máquina é detectado automaticamente e aparece no banner:
+
+```
+  Neste computador:      http://localhost:5001
+  Outros dispositivos:   http://192.168.1.42:5001
+```
+
+Na primeira execução em rede, o Windows pergunta se libera o Python — aceite para **redes privadas**. Se outros dispositivos não acessarem, libere a porta manualmente:
+
+```
+netsh advfirewall firewall add rule name="Saude Simples" dir=in action=allow protocol=TCP localport=5001
+```
+
+> Este modelo é para **rede local fechada**. Não exponha a porta na internet (sem port-forward no roteador).
+
+## HTTPS na rede local (opcional)
+
+```bash
+python gerar_certificado.py
+```
+
+Gera um certificado self-signed em `instance/certs/` que inclui `localhost`, `127.0.0.1` e o IP atual da máquina. Com o certificado presente, o `run.py` sobe **automaticamente em HTTPS** (servidor cheroot) e liga cookie `Secure` + HSTS sozinho.
+
+- Se o IP da máquina mudar (DHCP), o certificado é **regenerado automaticamente** no próximo start — o endereço nunca fica "chumbado".
+- Endereços extras: `python gerar_certificado.py 192.168.1.50 recepcao.local`
+- Self-signed: cada dispositivo aceita o aviso de segurança uma única vez.
+- Para voltar ao HTTP, apague `instance/certs/`.
 
 ### Primeiro acesso
 
@@ -110,17 +145,22 @@ O banco fica em `instance/database.db`. Instalações antigas (banco na raiz do 
 | `SAUDE_SIMPLES_SECRET_KEY` | Sim | Chave de sessão. Gere uma por instalação, nunca reaproveite. |
 | `SAUDE_SIMPLES_PASSWORD_HASH` | Não | Só para setups automatizados que preferem definir a senha via `.env` em vez de `resetar_senha.py`. Na maioria dos casos, ignore esta variável. |
 | `SAUDE_SIMPLES_DEBUG` | Não | `true` usa o servidor de desenvolvimento do Flask; `false` (padrão) usa waitress, recomendado mesmo em uso local. |
-| `SAUDE_SIMPLES_HOST` | Não | Padrão `127.0.0.1` (só acessível na própria máquina). |
+| `SAUDE_SIMPLES_COMPARTILHAR_REDE` | Não | `true` abre o acesso para a rede WiFi local (bind `0.0.0.0`). Padrão: só localhost. |
+| `SAUDE_SIMPLES_HOST` | Não | Bind explícito (casos avançados). Diferente de localhost também liga o compartilhamento. |
 | `SAUDE_SIMPLES_PORT` | Não | Padrão `5001`. |
-| `SAUDE_SIMPLES_FORCE_HTTPS` | Não | `true` marca o cookie de sessão como `Secure`. Ligue apenas se houver TLS na frente. |
+| `SAUDE_SIMPLES_FORCE_HTTPS` | Não | Gerenciada pelo `run.py` quando há certificado TLS (cookie `Secure` + HSTS). Só defina manualmente com TLS externo. |
 
 O `.env` nunca deve ser commitado — já está no `.gitignore`.
 
 ## Estrutura
 
 ```
+run.py               # entrada do servidor: rede WiFi local + TLS automático
 app.py               # rotas, regras de negócio, geração de PDF, CSP/headers
 db.py                # banco de dados, senha e backups (sem depender do Flask)
+rede_tls.py          # descoberta de IP na LAN + certificado self-signed
+gerar_certificado.py # gera/renova o certificado TLS local
+iniciar_servidor.bat # bootstrap de duplo-clique no Windows
 resetar_senha.py     # ferramenta de recuperação/definição de senha
 templates/           # páginas HTML (base.html é o layout mestre)
 static/css/          # app.css (componentes/tema escuro) + tailwind.css compilado

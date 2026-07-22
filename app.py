@@ -145,6 +145,10 @@ def set_security_headers(response):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if app.config["SESSION_COOKIE_SECURE"]:
+        # Servindo sob TLS (run.py liga FORCE_HTTPS): navegadores passam a
+        # recusar downgrade para HTTP neste host.
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
     nonce = g.get("csp_nonce", "")
     response.headers.setdefault(
         "Content-Security-Policy",
@@ -1874,18 +1878,15 @@ def importar_banco_view():
     return redirect(url_for("banco"))
 
 
-if __name__ == "__main__":
-    import sys
-
-    if sys.platform == "win32":
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stderr.reconfigure(encoding="utf-8")
-
+def preparar_primeiro_boot():
+    """Prepara o sistema para servir: banco criado/migrado, senha garantida
+    (ou código de configuração inicial no terminal) e backup de inicialização.
+    Chamado pelo run.py — a entrada canônica do servidor."""
     init_db()
     if not garantir_senha_inicial(BOOTSTRAP_PASSWORD_HASH):
         codigo_setup = ensure_setup_token()
         # print, não logger: este é o canal de entrega do código — precisa
-        # saltar aos olhos de quem acabou de rodar `python app.py`.
+        # saltar aos olhos de quem acabou de iniciar o servidor.
         print()
         print("=" * 62)
         print("  PRIMEIRO ACESSO — nenhuma senha configurada ainda.")
@@ -1901,14 +1902,10 @@ if __name__ == "__main__":
     except (sqlite3.Error, OSError) as exc:
         logger.warning("Falha ao criar backup de inicialização: %s", exc)
 
-    debug_enabled = os.environ.get("SAUDE_SIMPLES_DEBUG", "").lower() in ("1", "true", "sim", "yes")
-    host = os.environ.get("SAUDE_SIMPLES_HOST", "127.0.0.1")
-    port = int(os.environ.get("SAUDE_SIMPLES_PORT", "5001"))
 
-    if debug_enabled:
-        app.run(debug=True, host=host, port=port)
-    else:
-        from waitress import serve
+if __name__ == "__main__":
+    # Entrada canônica é o run.py (rede WiFi local + TLS automático).
+    # `python app.py` continua funcionando: delega para lá.
+    import runpy
 
-        logger.info("Iniciando servidor de produção (waitress) em %s:%s", host, port)
-        serve(app, host=host, port=port)
+    runpy.run_path(os.path.join(BASE_DIR, "run.py"), run_name="__main__")

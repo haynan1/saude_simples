@@ -4,3 +4,5 @@ python-dotenv==1.2.2
 reportlab==4.2.2
 Pillow==12.3.0
 waitress==3.0.2
+cheroot==10.0.1
+cryptography==48.0.1
