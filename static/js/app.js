@@ -50,7 +50,7 @@
   }
 
   function setExportPreviewLoading(isLoading) {
-    document.querySelectorAll('.export-preview-stats strong').forEach((el) => {
+    document.querySelectorAll('[data-preview-stat]').forEach((el) => {
       el.classList.toggle('is-loading', isLoading);
     });
   }
@@ -92,6 +92,8 @@
     if (submitButton) {
       submitButton.disabled = count === 0;
       submitButton.title = count === 0 ? 'Selecione pelo menos uma comorbidade' : '';
+      // O CTA diz exatamente o que vai acontecer.
+      submitButton.textContent = count > 0 ? `Exportar selecionadas (${count})` : 'Exportar selecionadas';
     }
 
     updateExportPreview();

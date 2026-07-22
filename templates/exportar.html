@@ -8,15 +8,15 @@
     Início
   </a>
   <h1 class="text-2xl font-bold tracking-tight text-slate-900">Exportar relatório em PDF</h1>
-  <p class="text-sm text-slate-500 mt-1">Exporte tudo ou filtre por comorbidades específicas — a prévia atualiza conforme a seleção.</p>
+  <p class="text-sm text-slate-500 mt-1">Exporte o território inteiro ou filtre por comorbidades — a prévia ao lado é o retrato do documento.</p>
 </div>
 
 <form method="get" action="{{ url_for('exportar_pdf') }}" id="exportFilteredPdfForm" data-no-smooth data-preview-url="{{ url_for('preview_exportar_pdf') }}">
   <input type="hidden" name="filtrar" value="1">
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+  <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
     <!-- Comorbidades -->
-    <section class="lg:col-span-2 rounded-xl border border-slate-200 bg-white">
+    <section class="lg:col-span-3 rounded-xl border border-slate-200 bg-white">
       <div class="section-heading">
         <div>
           <h2>Filtrar por comorbidades</h2>
@@ -30,7 +30,7 @@
         <button class="btn-secondary export-inline-btn export-clear" type="button">Limpar seleção</button>
       </div>
 
-      <div class="export-options-grid p-6">
+      <div class="export-options-grid px-6 pt-3 pb-6">
         {% for opcao in opcoes_condicoes_saude %}
           <label class="condition-option">
             <input class="condition-check export-condition" type="checkbox" name="condicoes" value="{{ opcao.codigo }}">
@@ -40,31 +40,43 @@
       </div>
     </section>
 
-    <!-- Prévia + ações -->
-    <aside class="lg:sticky lg:top-8 space-y-4">
-      <div class="rounded-xl border border-slate-200 bg-white p-5">
-        <div class="export-preview export-preview-compact">
-          <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
-            <div class="min-w-0">
-              <strong class="export-preview-title text-sm">Prévia do relatório completo</strong>
-              <span class="export-preview-description block text-xs text-slate-500">Marque comorbidades para ver o recorte filtrado.</span>
-            </div>
-            <span class="export-preview-mode export-preview-mode-general">Geral</span>
+    <!-- Prévia: miniatura do documento -->
+    <aside class="lg:col-span-2 lg:sticky lg:top-8">
+      <div class="report-card">
+        <div class="report-card-bar" aria-hidden="true"></div>
+
+        <div class="report-card-head">
+          <div class="min-w-0">
+            <p class="report-kicker">Relatório · PDF</p>
+            <strong class="export-preview-title report-title">Prévia do relatório completo</strong>
+            <span class="export-preview-description report-sub">Marque comorbidades para ver o recorte filtrado.</span>
           </div>
-          <div class="export-preview-stats">
-            <div><span>Casas</span><strong data-preview-stat="total_casas">0</strong></div>
-            <div><span>Pacientes</span><strong data-preview-stat="total_pacientes">0</strong></div>
-            <div><span>Vazias</span><strong data-preview-stat="casas_vazias">0</strong></div>
-            <div><span>Crianças</span><strong data-preview-stat="criancas">0</strong></div>
-            <div><span>Idosos</span><strong data-preview-stat="idosos">0</strong></div>
-            <div><span>Gestantes</span><strong data-preview-stat="gestantes">0</strong></div>
-            <div><span>Homens</span><strong data-preview-stat="homens">0</strong></div>
-            <div><span>Mulheres</span><strong data-preview-stat="mulheres">0</strong></div>
-          </div>
-          <div class="export-preview-conditions">Nenhuma comorbidade selecionada.</div>
+          <span class="export-preview-mode export-preview-mode-general">Geral</span>
         </div>
 
-        <div class="mt-4 space-y-2">
+        <div class="report-hero">
+          <div>
+            <span>Pacientes</span>
+            <strong data-preview-stat="total_pacientes">0</strong>
+          </div>
+          <div>
+            <span>Casas</span>
+            <strong data-preview-stat="total_casas">0</strong>
+          </div>
+        </div>
+
+        <div class="report-stats">
+          <div><span>Vazias</span><strong data-preview-stat="casas_vazias">0</strong></div>
+          <div><span>Crianças</span><strong data-preview-stat="criancas">0</strong></div>
+          <div><span>Idosos</span><strong data-preview-stat="idosos">0</strong></div>
+          <div><span>Gestantes</span><strong data-preview-stat="gestantes">0</strong></div>
+          <div><span>Homens</span><strong data-preview-stat="homens">0</strong></div>
+          <div><span>Mulheres</span><strong data-preview-stat="mulheres">0</strong></div>
+        </div>
+
+        <div class="export-preview-conditions report-conditions">Nenhuma comorbidade selecionada.</div>
+
+        <div class="report-actions">
           <button type="submit" class="btn-primary w-full export-selected-submit" disabled>Exportar selecionadas</button>
           <a class="btn-secondary w-full" href="{{ url_for('exportar_pdf') }}" data-no-smooth title="Exportar relatório completo sem filtros">Exportar tudo (sem filtro)</a>
         </div>
