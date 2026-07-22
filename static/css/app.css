@@ -2995,5 +2995,7 @@ body.confirm-dialog-open { overflow: hidden; }
 .theme-dark .panel-scroll { scrollbar-color: #334155 transparent; }
 .theme-dark .panel-scroll::-webkit-scrollbar-thumb { background: #334155; }
 
-.house-board-scroll { max-height: 53rem; }
+/* Mesma altura nos dois painéis: os cartões de casas e quadras terminam
+   alinhados quando ambos atingem o limite. */
+.house-board-scroll,
 .quadra-list-scroll { max-height: 45rem; }
