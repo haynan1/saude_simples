@@ -75,6 +75,24 @@ def test_casa_quadra_inexistente_rejeitada(logged_client):
     assert resp.status_code == 200  # re-render com erro
 
 
+def test_casas_listadas_em_ordem_de_numeracao(logged_client):
+    """A lista do painel ordena pelo número da casa, independente da quadra."""
+    import re
+
+    criar_quadra(logged_client, "1")
+    criar_quadra(logged_client, "2")
+    # Cadastradas fora de ordem e em quadras diferentes de propósito.
+    criar_casa(logged_client, endereco="Rua C", numero="9", quadra_id="1")
+    criar_casa(logged_client, endereco="Rua A", numero="2", quadra_id="2")
+    criar_casa(logged_client, endereco="Rua B", numero="5", quadra_id="")
+
+    body = logged_client.get("/").get_data(as_text=True)
+    secao_casas = body.split("Cadastrar casa")[1].split("Quadras")[0]
+    numeros = [int(n) for n in re.findall(r"Casa (\d+)", secao_casas)]
+    assert numeros == sorted(numeros)
+    assert numeros == [2, 5, 9]
+
+
 def test_numeracao_automatica_por_quadra(logged_client):
     criar_quadra(logged_client)
     criar_casa(logged_client, numero="", quadra_id="1")

@@ -790,7 +790,8 @@ def index():
         LEFT JOIN quadras ON quadras.id = casas.quadra_id
         LEFT JOIN pacientes ON pacientes.casa_id = casas.id
         GROUP BY casas.id
-        ORDER BY quadras.numero_quadra IS NULL, quadras.numero_quadra, casas.numero_casa, casas.id
+        ORDER BY casas.numero_casa IS NULL, casas.numero_casa, quadras.numero_quadra IS NULL,
+                 quadras.numero_quadra, casas.id
         """
     ).fetchall()
     pacientes = conn.execute("SELECT sexo, data_nascimento, condicoes_saude FROM pacientes").fetchall()

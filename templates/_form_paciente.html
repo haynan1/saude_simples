@@ -1,5 +1,5 @@
 {% set selecionadas = paciente.condicoes_saude|condicoes_codigos if paciente else [] %}
-<form method="post" class="rounded-xl border border-slate-200 bg-white max-w-3xl">
+<form method="post" class="rounded-xl border border-slate-200 bg-white">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
   <div class="px-6 pt-6">
@@ -63,8 +63,9 @@
       </button>
       <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2" x-show="open" x-cloak @change="recount">
         {% for opcao in opcoes_condicoes_saude %}
-          <label class="export-option">
+          <label class="condition-option">
             <input
+              class="condition-check"
               type="checkbox"
               name="condicoes_saude"
               value="{{ opcao.codigo }}"

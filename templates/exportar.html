@@ -32,8 +32,8 @@
 
       <div class="export-options-grid p-6">
         {% for opcao in opcoes_condicoes_saude %}
-          <label class="export-option">
-            <input class="export-condition" type="checkbox" name="condicoes" value="{{ opcao.codigo }}">
+          <label class="condition-option">
+            <input class="condition-check export-condition" type="checkbox" name="condicoes" value="{{ opcao.codigo }}">
             <span>{{ opcao.label }}</span>
           </label>
         {% endfor %}
