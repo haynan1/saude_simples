@@ -108,6 +108,37 @@
   </div>
 </form>
 
+<!-- Perfil Epidemiológico: tabela mensal consolidada -->
+<form method="post" action="{{ url_for('exportar_perfil_epidemiologico') }}" class="mt-6" data-no-smooth>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <section class="rounded-xl border border-slate-200 bg-white">
+    <div class="section-heading">
+      <div>
+        <h2>Perfil Epidemiológico</h2>
+        <p>Tabela mensal consolidada dos últimos 7 meses — o retrato de cada mês é registrado automaticamente durante o uso do sistema.</p>
+      </div>
+      <span class="section-badge">A4 paisagem</span>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-field md-span-2">
+        <label class="form-label" for="acs_nome">Nome do ACS (cabeçalho do documento)</label>
+        <input class="form-input" id="acs_nome" name="acs_nome" type="text" maxlength="120" placeholder="Nome completo do agente comunitário de saúde" value="{{ acs_nome }}">
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="acs_microarea">Microárea</label>
+        <input class="form-input" id="acs_microarea" name="acs_microarea" type="text" maxlength="20" inputmode="numeric" placeholder="Ex.: 13" value="{{ acs_microarea }}">
+      </div>
+    </div>
+
+    <div class="px-6 pb-6 flex flex-wrap items-center gap-3">
+      <button type="submit" class="btn-primary">Exportar Perfil Epidemiológico</button>
+      <a class="btn-secondary" href="{{ url_for('exportar_perfil_epidemiologico_xlsx') }}" data-no-smooth title="Série mensal completa em planilha, com a origem de cada retrato">Baixar histórico (XLSX)</a>
+      <p class="text-sm text-slate-500">Nome e microárea ficam salvos para as próximas exportações.</p>
+    </div>
+  </section>
+</form>
+
 {# Reexecutado pelo smooth-navigation a cada troca de página — garante a
    prévia inicial também quando se chega aqui sem recarregar o site. #}
 <script nonce="{{ csp_nonce }}">

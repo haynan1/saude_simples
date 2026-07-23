@@ -1,4 +1,5 @@
 import csv
+import json
 import logging
 import os
 import secrets
@@ -16,9 +17,12 @@ from xml.sax.saxutils import escape as xml_escape
 from dotenv import load_dotenv
 from flask import Flask, flash, g, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_wtf import CSRFProtect
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 from PIL import Image as PILImage
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -32,17 +36,22 @@ from db import (
     MIN_PASSWORD_LENGTH,
     BancoInvalido,
     caminho_backup,
+    carregar_perfis_mensais,
     clear_setup_token,
     criar_backup,
     ensure_setup_token,
     exportar_snapshot,
     garantir_senha_inicial,
     get_db_connection,
+    get_preferencia,
     get_senha_hash,
     importar_banco,
     init_db,
     listar_backups,
+    primeiro_mes_perfil,
     restaurar_backup,
+    salvar_perfil_mensal,
+    set_preferencia,
     set_senha_hash,
     verify_setup_token,
 )
@@ -201,7 +210,13 @@ def login_bloqueado(client_ip):
         attempts = [
             t for t in _login_attempts.get(client_ip, []) if now - t < LOGIN_ATTEMPT_WINDOW_SECONDS
         ]
-        _login_attempts[client_ip] = attempts
+        # Sem tentativas dentro da janela, a chave do IP sai do dict — chamado
+        # a cada POST de login/setup/troca de senha, isto mantém a estrutura do
+        # tamanho dos IPs ativos, não do total histórico que já bateu à porta.
+        if attempts:
+            _login_attempts[client_ip] = attempts
+        else:
+            _login_attempts.pop(client_ip, None)
         return len(attempts) >= LOGIN_ATTEMPT_LIMIT
 
 
@@ -290,8 +305,10 @@ CONDICOES_SAUDE_OPCOES = [
     {"codigo": "saude_mental", "label": "Diagnóstico de problema de saúde mental"},
     {"codigo": "acamado", "label": "Está acamado"},
     {"codigo": "domiciliado", "label": "Está domiciliado"},
+    {"codigo": "deficiencia", "label": "Pessoa com deficiência"},
     {"codigo": "plantas_medicinais", "label": "Usa plantas medicinais"},
     {"codigo": "praticas_integrativas", "label": "Usa práticas integrativas e complementares"},
+    {"codigo": "bolsa_familia", "label": "Recebe Bolsa Família"},
     {"codigo": "outras_condicoes", "label": "Outras condições de saúde"},
 ]
 CONDICOES_SAUDE = [opcao["label"] for opcao in CONDICOES_SAUDE_OPCOES]
@@ -572,7 +589,15 @@ def calcular_idade(data_nascimento):
 # lugar só.
 # ---------------------------------------------------------------------------
 def paciente_e_crianca(paciente):
-    return (calcular_idade(paciente["data_nascimento"]) or 999) < 12
+    # `idade or 999` seria armadilha: 0 (menos de 1 ano) é falsy — recém-
+    # -nascido tem que contar como criança.
+    idade = calcular_idade(paciente["data_nascimento"])
+    return idade is not None and idade < 12
+
+
+def paciente_e_crianca_0_2(paciente):
+    idade = calcular_idade(paciente["data_nascimento"])
+    return idade is not None and idade <= 2
 
 
 def paciente_e_idoso(paciente):
@@ -600,6 +625,7 @@ def paciente_e_mulher(paciente):
 
 # "Pacientes (todos)" do painel é o estado sem grupo marcado — não é um grupo.
 GRUPOS_DEMOGRAFICOS_OPCOES = [
+    {"codigo": "criancas_0_2", "label": "Crianças 0 a 2 anos"},
     {"codigo": "criancas", "label": "Crianças (até 11 anos)"},
     {"codigo": "idosos", "label": "Idosos 60+"},
     {"codigo": "gestantes", "label": "Gestantes"},
@@ -608,6 +634,7 @@ GRUPOS_DEMOGRAFICOS_OPCOES = [
 ]
 GRUPOS_POR_CODIGO = {opcao["codigo"]: opcao["label"] for opcao in GRUPOS_DEMOGRAFICOS_OPCOES}
 GRUPOS_PREDICADOS = {
+    "criancas_0_2": paciente_e_crianca_0_2,
     "criancas": paciente_e_crianca,
     "idosos": paciente_e_idoso,
     "gestantes": paciente_e_gestante,
@@ -728,6 +755,174 @@ def carregar_dados_relatorio(condicoes_selecionadas=None, filtro_sem_selecao=Fal
         pacientes = []
 
     return casas, pacientes
+
+
+# ---------------------------------------------------------------------------
+# Perfil epidemiológico mensal
+#
+# O retrato do mês corrente é recalculado do banco e gravado (upsert) no
+# primeiro acesso autenticado de cada dia e a cada exportação do perfil.
+# Quando o mês vira, o último retrato gravado congela como histórico — a
+# série mensal se constrói sozinha, sem rotina manual de fechamento. Mês em
+# que o sistema não foi usado fica sem retrato e aparece como "-----".
+# ---------------------------------------------------------------------------
+MESES_ABREVIADOS = ("JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ")
+
+# Linhas do relatório: (rótulo, chave no retrato, "fm" separa F/M, "span" ocupa
+# as duas colunas do mês. Ordem e rótulos seguem o modelo oficial do perfil.
+PERFIL_LINHAS = [
+    ("Pessoas cadastradas", "pessoas", "fm"),
+    ("Hipertensos", "hipertensos", "fm"),
+    ("Diabéticos", "diabeticos", "fm"),
+    ("Idosos", "idosos", "fm"),
+    ("Gestantes", "gestantes", "span"),
+    ("Crianças 0 a 2 anos", "criancas_0_2", "fm"),
+    ("Acamados", "acamados", "fm"),
+    ("Domiciliados", "domiciliados", "fm"),
+    ("Obesos", "obesos", "fm"),
+    ("Saúde Mental", "saude_mental", "fm"),
+    ("Deficientes", "deficientes", "fm"),
+    ("Tabagistas", "tabagistas", "fm"),
+    ("Bolsa Família", "bolsa_familia", "fm"),
+]
+
+
+def calcular_perfil_epidemiologico():
+    """Retrato atual dos indicadores do território, separados por sexo."""
+    casas, pacientes = carregar_dados_relatorio()
+
+    def por_sexo(predicado):
+        return {
+            "f": sum(1 for p in pacientes if paciente_e_mulher(p) and predicado(p)),
+            "m": sum(1 for p in pacientes if paciente_e_homem(p) and predicado(p)),
+        }
+
+    def por_condicao(codigo):
+        return por_sexo(lambda p: codigo in listar_condicao_codigos(p["condicoes_saude"]))
+
+    return {
+        # Família = casa com pelo menos um morador ativo (casa vazia não conta).
+        "familias": sum(1 for casa in casas if casa["total_pacientes"] > 0),
+        "pessoas": por_sexo(lambda p: True),
+        "hipertensos": por_condicao("hipertensao"),
+        "diabeticos": por_condicao("diabetes"),
+        "idosos": por_sexo(paciente_e_idoso),
+        "gestantes": sum(1 for p in pacientes if paciente_e_gestante(p)),
+        "criancas_0_2": por_sexo(paciente_e_crianca_0_2),
+        "acamados": por_condicao("acamado"),
+        "domiciliados": por_condicao("domiciliado"),
+        "obesos": por_condicao("acima_peso"),
+        "saude_mental": por_condicao("saude_mental"),
+        "deficientes": por_condicao("deficiencia"),
+        "tabagistas": por_condicao("fumante"),
+        "bolsa_familia": por_condicao("bolsa_familia"),
+    }
+
+
+def registrar_perfil_mensal():
+    """Grava (upsert) o retrato do mês corrente. Retorna o retrato."""
+    perfil = calcular_perfil_epidemiologico()
+    ano_mes = datetime.now().strftime("%Y-%m")
+    salvar_perfil_mensal(ano_mes, json.dumps(perfil, ensure_ascii=False))
+    return perfil
+
+
+# Dia (AAAA-MM-DD) em que o retrato já foi registrado neste processo — o hook
+# abaixo roda no máximo uma vez por dia. Corrida entre threads é inofensiva:
+# o pior caso é um upsert repetido com o mesmo conteúdo.
+_perfil_registrado_dia = None
+
+
+@app.before_request
+def registrar_perfil_do_dia():
+    global _perfil_registrado_dia
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    if _perfil_registrado_dia == hoje:
+        return
+    if request.endpoint == "static" or not session.get("usuario_autenticado"):
+        return
+    _perfil_registrado_dia = hoje
+    try:
+        registrar_perfil_mensal()
+    except sqlite3.Error:
+        # Nunca derruba a navegação por causa do retrato — tenta de novo amanhã.
+        logger.exception("Falha ao registrar o perfil mensal automático")
+        _perfil_registrado_dia = None
+
+
+# Teto de sanidade da série (10 anos). Não é janela: nenhum mês registrado
+# dentro dele é descartado — só protege o documento de um banco com ano_mes
+# absurdo (ex.: editado à mão) virar um PDF de milhares de colunas.
+PERFIL_MAXIMO_MESES = 120
+
+# O PDF é o entregável mensal: mostra os últimos 12 meses, sempre com um ano
+# de contexto. O mês que sai do PDF permanece no banco e sai integral no XLSX
+# — a janela é de exibição, nunca de retenção.
+PERFIL_MESES_NO_PDF = 12
+
+
+def meses_da_serie_perfil(referencia=None):
+    """Do primeiro mês com retrato registrado até o mês corrente, contínuo.
+
+    A série nasce no mês em que o sistema começou a ser alimentado — não há
+    janela fixa nem data cravada em código: o histórico só cresce, mês a mês.
+    Sem nenhum retrato ainda, a série é só o mês corrente. Buracos no meio
+    (mês sem uso) permanecem na série e saem como "-----" no documento.
+    """
+    referencia = referencia or datetime.now()
+    atual = f"{referencia.year:04d}-{referencia.month:02d}"
+    inicio = primeiro_mes_perfil() or atual
+    if inicio > atual:
+        inicio = atual  # relógio ajustado para trás não pode quebrar a série
+
+    ano, mes = int(inicio[:4]), int(inicio[5:7])
+    total = (referencia.year - ano) * 12 + (referencia.month - mes) + 1
+    if total > PERFIL_MAXIMO_MESES:
+        # Acima do teto, ficam os meses mais RECENTES — o corte é no passado.
+        avanco = total - PERFIL_MAXIMO_MESES
+        mes += avanco
+        ano += (mes - 1) // 12
+        mes = (mes - 1) % 12 + 1
+        total = PERFIL_MAXIMO_MESES
+
+    meses = []
+    for _ in range(total):
+        meses.append(f"{ano:04d}-{mes:02d}")
+        mes += 1
+        if mes == 13:
+            ano, mes = ano + 1, 1
+    return meses
+
+
+def rotulo_mes(ano_mes):
+    ano, mes = ano_mes.split("-")
+    return f"{MESES_ABREVIADOS[int(mes) - 1]}/{ano}"
+
+
+def montar_serie_perfis(meses, perfil_atual):
+    """Retratos mês a mês, com carência herdada: mês sem registro recebe o
+    último retrato anterior — sistema parado significa cadastro inalterado,
+    não dado perdido. O relatório sai entregável em qualquer mês.
+
+    O mês corrente é sempre o `perfil_atual` (calculado ao vivo). "-----" só
+    resta quando não há retrato nenhum antes do mês (série corrompida) ou
+    quando um indicador não existia no retrato da época.
+    """
+    salvos = carregar_perfis_mensais(meses[:-1])
+    perfis = {}
+    ultimo = None
+    for ano_mes in meses[:-1]:
+        dados = None
+        if ano_mes in salvos:
+            try:
+                dados = json.loads(salvos[ano_mes])
+            except ValueError:
+                dados = None  # registro ilegível cai na herança, não quebra
+        perfis[ano_mes] = dados if dados is not None else ultimo
+        if dados is not None:
+            ultimo = dados
+    perfis[meses[-1]] = perfil_atual
+    return perfis
 
 
 def formatar_tamanho(num_bytes):
@@ -2162,7 +2357,12 @@ def importar_pacientes():
 @app.route("/exportar")
 @login_required
 def exportar():
-    return render_template("exportar.html", opcoes_grupos=GRUPOS_DEMOGRAFICOS_OPCOES)
+    return render_template(
+        "exportar.html",
+        opcoes_grupos=GRUPOS_DEMOGRAFICOS_OPCOES,
+        acs_nome=get_preferencia("acs_nome"),
+        acs_microarea=get_preferencia("acs_microarea"),
+    )
 
 
 @app.route("/exportar/preview")
@@ -2235,10 +2435,15 @@ def exportar_pdf():
     def adicionar_cabecalho_rodape(canvas, doc):
         canvas.saveState()
         if doc.page > 1:
-            canvas.setFont("Helvetica-Bold", 9)
+            canvas.setFont("Helvetica-Bold", 8)
             canvas.setFillColor(colors.HexColor("#0b5ed7"))
-            canvas.drawString(1.5 * cm, A4[1] - 1.1 * cm, "RELATÓRIO")
+            canvas.drawString(1.5 * cm, A4[1] - 1.1 * cm, "SAÚDE SIMPLES")
             canvas.setFont("Helvetica", 8)
+            canvas.setFillColor(colors.HexColor("#495057"))
+            largura_marca = canvas.stringWidth("SAÚDE SIMPLES", "Helvetica-Bold", 8)
+            canvas.drawString(
+                1.5 * cm + largura_marca + 6, A4[1] - 1.1 * cm, "Relatório do Território"
+            )
             canvas.setFillColor(colors.HexColor("#6c757d"))
             canvas.drawRightString(A4[0] - 1.5 * cm, A4[1] - 1.1 * cm, f"Gerado em {data_geracao}")
             canvas.setStrokeColor(colors.HexColor("#dee2e6"))
@@ -2260,35 +2465,53 @@ def exportar_pdf():
         bottomMargin=1.5 * cm,
     )
     styles = getSampleStyleSheet()
+    # Cabeçalho editorial: overline de marca, título forte à esquerda e
+    # metadados à direita — hierarquia de documento, não de banner.
+    overline_style = ParagraphStyle(
+        "OverlineMarca",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=10,
+        textColor=colors.HexColor("#0b5ed7"),
+        spaceAfter=3,
+    )
     title_style = ParagraphStyle(
         "TituloRelatorio",
         parent=styles["Title"],
         fontName="Helvetica-Bold",
-        fontSize=18,
-        leading=22,
-        textColor=colors.HexColor("#0b5ed7"),
-        alignment=1,
-        spaceAfter=4,
+        fontSize=20,
+        leading=23,
+        textColor=colors.HexColor("#212529"),
+        alignment=0,
+        spaceAfter=0,
+    )
+    meta_style = ParagraphStyle(
+        "MetaRelatorio",
+        parent=styles["BodyText"],
+        fontSize=8,
+        leading=12,
+        textColor=colors.HexColor("#6c757d"),
+        alignment=2,
     )
     subtitle_style = ParagraphStyle(
         "SubtituloRelatorio",
         parent=styles["BodyText"],
-        fontSize=9,
-        leading=12,
-        textColor=colors.HexColor("#6c757d"),
-        alignment=1,
-        spaceAfter=12,
-    )
-    image_title_style = ParagraphStyle(
-        "TituloImagem",
-        parent=styles["Heading3"],
-        fontName="Helvetica-Bold",
-        fontSize=10,
+        fontSize=8.5,
         leading=12,
         textColor=colors.HexColor("#495057"),
+        alignment=0,
+        spaceAfter=2,
+    )
+    caption_style = ParagraphStyle(
+        "LegendaImagem",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Oblique",
+        fontSize=7.5,
+        leading=10,
+        textColor=colors.HexColor("#6c757d"),
         alignment=1,
-        spaceBefore=2,
-        spaceAfter=6,
+        spaceBefore=4,
     )
     section_style = ParagraphStyle(
         "SecaoRelatorio",
@@ -2349,12 +2572,55 @@ def exportar_pdf():
 
     total_pacientes = len(pacientes)
     stats = build_dashboard_stats(casas, pacientes)
+    rotulo_casas = "casa" if len(casas) == 1 else "casas"
+    rotulo_pacientes = "paciente" if total_pacientes == 1 else "pacientes"
+    header_table = Table(
+        [
+            [
+                [
+                    Paragraph("SAÚDE SIMPLES", overline_style),
+                    Paragraph("Relatório do Território", title_style),
+                ],
+                Paragraph(
+                    f"Gerado em {data_geracao}<br/>"
+                    f"{len(casas)} {rotulo_casas} &#183; {total_pacientes} {rotulo_pacientes}",
+                    meta_style,
+                ),
+            ]
+        ],
+        colWidths=[11.4 * cm, 6.6 * cm],
+    )
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (0, 0), "TOP"),
+                ("VALIGN", (1, 0), (1, 0), "BOTTOM"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    # Régua com acento: segmento curto na cor da marca + linha-fio no restante.
+    header_rule = Table([["", ""]], colWidths=[2.6 * cm, 15.4 * cm], rowHeights=[2])
+    header_rule.setStyle(
+        TableStyle(
+            [
+                ("LINEBELOW", (0, 0), (0, 0), 1.6, colors.HexColor("#0b5ed7")),
+                ("LINEBELOW", (1, 0), (1, 0), 0.5, colors.HexColor("#dee2e6")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
     elements = [
-        Paragraph("RELATÓRIO", title_style),
-        Paragraph(
-            f"Gerado em {data_geracao} | {len(casas)} casa(s) | {total_pacientes} paciente(s)",
-            subtitle_style,
-        ),
+        header_table,
+        Spacer(1, 7),
+        header_rule,
+        Spacer(1, 10),
     ]
     if grupos_selecionados:
         elements.append(
@@ -2371,13 +2637,32 @@ def exportar_pdf():
         elements.append(
             Paragraph("<b>Filtro:</b> nenhum grupo ou comorbidade selecionado", subtitle_style)
         )
+    if modo_filtro:
+        elements.append(Spacer(1, 8))
 
     report_image_path = os.path.join(BASE_DIR, "image", "image.jpg")
     if os.path.exists(report_image_path):
+        # Imagem tratada como figura: moldura fina, legenda discreta abaixo.
+        region_image = pdf_image(report_image_path, 17.4 * cm, 4.8 * cm)
+        image_frame = Table(
+            [[region_image]], colWidths=[region_image.drawWidth + 0.2 * cm]
+        )
+        image_frame.setStyle(
+            TableStyle(
+                [
+                    ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#dee2e6")),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ]
+            )
+        )
         elements.extend(
             [
-                Paragraph("Imagem da Região da UBS", image_title_style),
-                pdf_image(report_image_path, 16.2 * cm, 4.4 * cm),
+                image_frame,
+                Paragraph("Área de abrangência da UBS", caption_style),
                 Spacer(1, 10),
             ]
         )
@@ -2691,6 +2976,425 @@ def exportar_pdf():
         as_attachment=True,
         download_name=nome_pdf,
         mimetype="application/pdf",
+    )
+
+
+@app.route("/exportar/perfil-epidemiologico", methods=["GET", "POST"])
+@login_required
+def exportar_perfil_epidemiologico():
+    # POST salva a identificação do cabeçalho antes de exportar; GET usa a
+    # salva. Nas duas formas o download é o mesmo documento.
+    if request.method == "POST":
+        set_preferencia("acs_nome", request.form.get("acs_nome", "").strip()[:120])
+        set_preferencia("acs_microarea", request.form.get("acs_microarea", "").strip()[:20])
+    acs_nome = get_preferencia("acs_nome")
+    acs_microarea = get_preferencia("acs_microarea")
+
+    # Mês corrente sempre ao vivo (e persistido); anteriores vêm do histórico,
+    # com mês sem uso herdando o retrato anterior. Registrar ANTES de montar a
+    # série: no primeiro uso é este retrato que ancora o início dela.
+    perfil_atual = registrar_perfil_mensal()
+    serie_completa = meses_da_serie_perfil()
+    # A herança é montada sobre a série inteira e o recorte é só de exibição:
+    # se o 1º mês da janela não tem registro, ele herda de antes da janela.
+    perfis = montar_serie_perfis(serie_completa, perfil_atual)
+    meses = serie_completa[-PERFIL_MESES_NO_PDF:]
+
+    data_geracao = datetime.now().strftime("%d/%m/%Y às %H:%M")
+    largura_pagina = landscape(A4)[0]
+
+    def adicionar_rodape(canvas, doc):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#6c757d"))
+        canvas.drawString(1.2 * cm, 0.8 * cm, "Saúde Simples")
+        canvas.drawRightString(largura_pagina - 1.2 * cm, 0.8 * cm, f"Página {doc.page}")
+        canvas.restoreState()
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=1.2 * cm,
+        leftMargin=1.2 * cm,
+        topMargin=1.3 * cm,
+        bottomMargin=1.3 * cm,
+    )
+    styles = getSampleStyleSheet()
+    overline_style = ParagraphStyle(
+        "OverlinePerfil",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=10,
+        textColor=colors.HexColor("#0b5ed7"),
+        spaceAfter=3,
+    )
+    title_style = ParagraphStyle(
+        "TituloPerfil",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=19,
+        leading=22,
+        textColor=colors.HexColor("#212529"),
+        alignment=0,
+        spaceAfter=0,
+    )
+    meta_style = ParagraphStyle(
+        "MetaPerfil",
+        parent=styles["BodyText"],
+        fontSize=8,
+        leading=12,
+        textColor=colors.HexColor("#6c757d"),
+        alignment=2,
+    )
+    id_style = ParagraphStyle(
+        "IdentificacaoPerfil",
+        parent=styles["BodyText"],
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#495057"),
+        spaceBefore=4,
+    )
+    label_style = ParagraphStyle(
+        "RotuloPerfil",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#334155"),
+    )
+
+    header_table = Table(
+        [
+            [
+                [
+                    Paragraph("SAÚDE SIMPLES", overline_style),
+                    Paragraph("Perfil Epidemiológico", title_style),
+                ],
+                Paragraph(f"Gerado em {data_geracao}", meta_style),
+            ]
+        ],
+        colWidths=[17 * cm, 10.3 * cm],
+    )
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (0, 0), "TOP"),
+                ("VALIGN", (1, 0), (1, 0), "BOTTOM"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    header_rule = Table([["", ""]], colWidths=[2.6 * cm, 24.7 * cm], rowHeights=[2])
+    header_rule.setStyle(
+        TableStyle(
+            [
+                ("LINEBELOW", (0, 0), (0, 0), 1.6, colors.HexColor("#0b5ed7")),
+                ("LINEBELOW", (1, 0), (1, 0), 0.5, colors.HexColor("#dee2e6")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+
+    elements = [header_table, Spacer(1, 6), header_rule]
+    identificacao = []
+    if acs_nome:
+        identificacao.append(f"<b>ACS:</b> {xml_escape(acs_nome)}")
+    if acs_microarea:
+        identificacao.append(f"<b>Microárea:</b> {xml_escape(acs_microarea)}")
+    if identificacao:
+        elements.append(Paragraph(" &#183; ".join(identificacao), id_style))
+    elements.append(Spacer(1, 8))
+
+    # --- Grade: coluna de rótulos + 2 subcolunas (F/M) por mês -------------
+    # A série completa é fatiada em blocos de 7 meses (a largura da folha);
+    # cada bloco vira uma tabela e o documento pagina sozinho — o histórico
+    # cresce sem limite de janela.
+    MESES_POR_BLOCO = 7
+    # Largura de subcoluna fixa (a do bloco cheio): bloco parcial sai com as
+    # mesmas proporções, alinhado à esquerda, em vez de esticado.
+    largura_mes = (27.3 - 3.9) / (MESES_POR_BLOCO * 2)
+
+    def pad(valor):
+        return f"{int(valor):02d}"
+
+    def montar_bloco(bloco):
+        grade = [[Paragraph("Mês/Ano", label_style)]]
+        for ano_mes in bloco:
+            grade[0].extend([rotulo_mes(ano_mes), ""])
+
+        spans_meia_linha = []  # células que ocupam as 2 subcolunas do mês
+        celulas_sem_dado = []  # células "-----": mês sem retrato registrado
+
+        linha_familias = [Paragraph("Famílias cadastradas", label_style)]
+        linha_genero = [Paragraph("Gênero", label_style)]
+        for indice_mes, ano_mes in enumerate(bloco):
+            dados = perfis[ano_mes]
+            valor = dados.get("familias") if dados else None
+            if valor is None:
+                celulas_sem_dado.append((1 + indice_mes * 2, 1))
+            linha_familias.extend(["-----" if valor is None else pad(valor), ""])
+            linha_genero.extend(["F", "M"])
+        grade.extend([linha_familias, linha_genero])
+
+        for rotulo, chave, tipo in PERFIL_LINHAS:
+            linha = [Paragraph(rotulo, label_style)]
+            indice_linha = len(grade)
+            for indice_mes, ano_mes in enumerate(bloco):
+                dados = perfis[ano_mes]
+                valor = dados.get(chave) if dados else None
+                coluna = 1 + indice_mes * 2
+                if valor is None:
+                    linha.extend(["-----", ""])
+                    spans_meia_linha.append((coluna, indice_linha))
+                    celulas_sem_dado.append((coluna, indice_linha))
+                elif tipo == "span":
+                    linha.extend([pad(valor), ""])
+                    spans_meia_linha.append((coluna, indice_linha))
+                else:
+                    linha.extend([pad(valor.get("f", 0)), pad(valor.get("m", 0))])
+            grade.append(linha)
+
+        tabela = Table(
+            grade,
+            colWidths=[3.9 * cm] + [largura_mes * cm] * (len(bloco) * 2),
+            repeatRows=1,
+            hAlign="LEFT",
+        )
+        # Comandos do geral para o específico — os últimos vencem nas células
+        # onde há sobreposição.
+        estilo = [
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#dee2e6")),
+            ("BOX", (0, 0), (-1, -1), 0.75, colors.HexColor("#adb5bd")),
+            ("FONTNAME", (1, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE", (1, 0), (-1, -1), 8),
+            ("TEXTCOLOR", (1, 1), (-1, -1), colors.HexColor("#212529")),
+            ("FONTNAME", (1, 0), (-1, 0), "Helvetica-Bold"),
+            ("TEXTCOLOR", (1, 0), (-1, 0), colors.HexColor("#212529")),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef4fb")),
+            ("FONTNAME", (1, 2), (-1, 2), "Helvetica-Bold"),
+            ("TEXTCOLOR", (1, 2), (-1, 2), colors.HexColor("#495057")),
+            ("BACKGROUND", (0, 2), (-1, 2), colors.HexColor("#f8fafc")),
+            ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+        ]
+        # Zebra discreta nas linhas de dados (antes dos realces por célula).
+        for linha in range(3, len(grade)):
+            if (linha - 3) % 2 == 1:
+                estilo.append(("BACKGROUND", (0, linha), (-1, linha), colors.HexColor("#fbfdff")))
+        # Cabeçalho dos meses e linha de famílias: cada mês ocupa as 2 subcolunas.
+        for indice_mes in range(len(bloco)):
+            coluna = 1 + indice_mes * 2
+            estilo.append(("SPAN", (coluna, 0), (coluna + 1, 0)))
+            estilo.append(("SPAN", (coluna, 1), (coluna + 1, 1)))
+        for coluna, linha in spans_meia_linha:
+            estilo.append(("SPAN", (coluna, linha), (coluna + 1, linha)))
+        for coluna, linha in celulas_sem_dado:
+            estilo.append(("TEXTCOLOR", (coluna, linha), (coluna, linha), colors.HexColor("#94a3b8")))
+        tabela.setStyle(TableStyle(estilo))
+        return tabela
+
+    for inicio_bloco in range(0, len(meses), MESES_POR_BLOCO):
+        bloco = meses[inicio_bloco:inicio_bloco + MESES_POR_BLOCO]
+        # KeepTogether: um bloco nunca quebra no meio entre páginas.
+        elements.append(KeepTogether(montar_bloco(bloco)))
+        elements.append(Spacer(1, 12))
+
+    legenda_style = ParagraphStyle(
+        "LegendaPerfil",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Oblique",
+        fontSize=7.5,
+        leading=10,
+        textColor=colors.HexColor("#6c757d"),
+        spaceBefore=6,
+    )
+    elements.append(
+        Paragraph(
+            "O documento apresenta os últimos 12 meses — o histórico completo fica guardado no "
+            "sistema e sai integral na planilha (XLSX). O retrato de cada mês é gravado "
+            "automaticamente durante o uso do sistema; mês em que o sistema não foi usado mantém o "
+            "retrato do mês anterior (o cadastro não mudou nesse período). "
+            "“-----” marca apenas indicador sem registro na época.",
+            legenda_style,
+        )
+    )
+
+    doc.build(elements, onFirstPage=adicionar_rodape, onLaterPages=adicionar_rodape)
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f"perfil_epidemiologico_{meses[-1]}.pdf",
+        mimetype="application/pdf",
+    )
+
+
+@app.route("/exportar/perfil-epidemiologico.xlsx")
+@login_required
+def exportar_perfil_epidemiologico_xlsx():
+    """Histórico completo do perfil em planilha XLSX estilizada.
+
+    Meses como linhas — o formato analítico: ordenável, filtrável, pronto
+    para gráfico e tabela dinâmica. Indicadores em colunas com F/M agrupados.
+    A coluna Origem preserva a auditoria que o PDF não mostra: qual mês foi
+    registrado de fato, qual herdou o anterior e qual é o retrato ao vivo.
+    """
+    perfil_atual = registrar_perfil_mensal()
+    meses = meses_da_serie_perfil()
+    perfis = montar_serie_perfis(meses, perfil_atual)
+    meses_registrados = set(carregar_perfis_mensais(meses[:-1]))
+    acs_nome = get_preferencia("acs_nome")
+    acs_microarea = get_preferencia("acs_microarea")
+
+    AZUL = "0B5ED7"
+    ESCURO = "212529"
+    CINZA = "64748B"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Histórico"
+    ws.sheet_view.showGridLines = False
+
+    fio = Side(style="thin", color="DEE2E6")
+    borda = Border(left=fio, right=fio, top=fio, bottom=fio)
+    centro = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    fonte_cabecalho = Font(bold=True, size=9, color="FFFFFF")
+    fill_cabecalho = PatternFill("solid", fgColor=AZUL)
+    fonte_sub = Font(bold=True, size=8, color="334155")
+    fill_sub = PatternFill("solid", fgColor="EEF4FB")
+    fill_zebra = PatternFill("solid", fgColor="F8FAFC")
+
+    # --- Título ------------------------------------------------------------
+    ws.cell(row=1, column=1, value="SAÚDE SIMPLES").font = Font(bold=True, size=8, color=AZUL)
+    ws.cell(row=2, column=1, value="Perfil Epidemiológico — Histórico Mensal").font = Font(
+        bold=True, size=14, color=ESCURO
+    )
+    identificacao = []
+    if acs_nome:
+        identificacao.append(f"ACS: {acs_nome}")
+    if acs_microarea:
+        identificacao.append(f"Microárea: {acs_microarea}")
+    identificacao.append(f"Gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')}")
+    ws.cell(row=3, column=1, value=" · ".join(identificacao)).font = Font(size=9, color=CINZA)
+    ws.row_dimensions[2].height = 20
+
+    # --- Cabeçalho em 2 linhas: indicador em cima, F/M embaixo -------------
+    LINHA_CAB, LINHA_SUB, LINHA_DADOS = 5, 6, 7
+
+    def cabecalho(linha, coluna, valor, sub=False):
+        c = ws.cell(row=linha, column=coluna, value=valor)
+        c.font = fonte_sub if sub else fonte_cabecalho
+        c.fill = fill_sub if sub else fill_cabecalho
+        c.alignment = centro
+        return c
+
+    coluna = 1
+    for titulo in ("Mês/Ano", "Origem do retrato", "Famílias cadastradas"):
+        ws.merge_cells(start_row=LINHA_CAB, start_column=coluna, end_row=LINHA_SUB, end_column=coluna)
+        cabecalho(LINHA_CAB, coluna, titulo)
+        coluna += 1
+    colunas_indicadores = []  # (chave, tipo, primeira coluna)
+    for rotulo, chave, tipo in PERFIL_LINHAS:
+        colunas_indicadores.append((chave, tipo, coluna))
+        if tipo == "span":
+            ws.merge_cells(start_row=LINHA_CAB, start_column=coluna, end_row=LINHA_SUB, end_column=coluna)
+            cabecalho(LINHA_CAB, coluna, rotulo)
+            coluna += 1
+        else:
+            ws.merge_cells(start_row=LINHA_CAB, start_column=coluna, end_row=LINHA_CAB, end_column=coluna + 1)
+            cabecalho(LINHA_CAB, coluna, rotulo)
+            cabecalho(LINHA_SUB, coluna, "F", sub=True)
+            cabecalho(LINHA_SUB, coluna + 1, "M", sub=True)
+            coluna += 2
+    total_colunas = coluna - 1
+    ws.row_dimensions[LINHA_CAB].height = 30
+    ws.row_dimensions[LINHA_SUB].height = 14
+
+    # --- Dados: um mês por linha -------------------------------------------
+    fonte_valor = Font(size=9, color=ESCURO)
+    fontes_origem = {
+        "registrado": Font(size=8.5, color="334155"),
+        "herdado do mês anterior": Font(size=8.5, italic=True, color=CINZA),
+        "mês corrente (ao vivo)": Font(size=8.5, bold=True, color=AZUL),
+    }
+
+    def valor_numerico(linha, coluna_alvo, valor, zebra):
+        c = ws.cell(row=linha, column=coluna_alvo)
+        if valor is not None:
+            c.value = int(valor)
+            c.number_format = "00"
+        c.font = fonte_valor
+        c.alignment = centro
+        if zebra:
+            c.fill = fill_zebra
+
+    for indice, ano_mes in enumerate(meses):
+        linha = LINHA_DADOS + indice
+        dados = perfis[ano_mes]
+        zebra = indice % 2 == 1
+        if ano_mes == meses[-1]:
+            origem = "mês corrente (ao vivo)"
+        elif ano_mes in meses_registrados:
+            origem = "registrado"
+        else:
+            origem = "herdado do mês anterior"
+
+        celula_mes = ws.cell(row=linha, column=1, value=rotulo_mes(ano_mes))
+        celula_mes.font = Font(bold=True, size=9, color=ESCURO)
+        celula_mes.alignment = centro
+        celula_origem = ws.cell(row=linha, column=2, value=origem)
+        celula_origem.font = fontes_origem[origem]
+        celula_origem.alignment = Alignment(horizontal="left", vertical="center")
+        if zebra:
+            celula_mes.fill = fill_zebra
+            celula_origem.fill = fill_zebra
+
+        valor_numerico(linha, 3, dados.get("familias") if dados else None, zebra)
+        for chave, tipo, coluna_inicial in colunas_indicadores:
+            valor = dados.get(chave) if dados else None
+            if tipo == "span":
+                valor_numerico(linha, coluna_inicial, valor, zebra)
+            else:
+                valor_numerico(linha, coluna_inicial, valor.get("f", 0) if valor else None, zebra)
+                valor_numerico(linha, coluna_inicial + 1, valor.get("m", 0) if valor else None, zebra)
+
+    # Bordas em toda a área da tabela (inclusive células mescladas).
+    ultima_linha = LINHA_DADOS + len(meses) - 1
+    for linha in range(LINHA_CAB, ultima_linha + 1):
+        for coluna_alvo in range(1, total_colunas + 1):
+            ws.cell(row=linha, column=coluna_alvo).border = borda
+
+    ws.column_dimensions["A"].width = 11
+    ws.column_dimensions["B"].width = 23
+    ws.column_dimensions["C"].width = 11
+    for coluna_alvo in range(4, total_colunas + 1):
+        ws.column_dimensions[get_column_letter(coluna_alvo)].width = 7
+    # Indicador de coluna única (ex.: Gestantes) precisa caber o rótulo inteiro.
+    for _, tipo, coluna_inicial in colunas_indicadores:
+        if tipo == "span":
+            ws.column_dimensions[get_column_letter(coluna_inicial)].width = 11
+    # Cabeçalho e identificação do mês sempre à vista ao rolar.
+    ws.freeze_panes = f"C{LINHA_DADOS}"
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f"perfil_epidemiologico_historico_{meses[-1]}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 

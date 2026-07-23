@@ -311,6 +311,28 @@ def init_db():
         )
         """
     )
+    # Perfil epidemiológico: fotografia mensal dos indicadores do território.
+    # O mês corrente é reescrito (upsert) enquanto o sistema é usado; quando o
+    # mês vira, o último retrato congela como histórico. JSON de propósito:
+    # snapshot é artefato, não dado relacional — o esquema evolui sem migração.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS perfil_mensal (
+            ano_mes TEXT PRIMARY KEY,
+            dados TEXT NOT NULL,
+            atualizado_em TEXT NOT NULL
+        )
+        """
+    )
+    # Preferências do operador (ex.: nome do ACS e microárea do relatório).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS preferencias (
+            chave TEXT PRIMARY KEY,
+            valor TEXT NOT NULL
+        )
+        """
+    )
     # Migração de dados: a importação do e-SUS gerava uma observação
     # ("Importado do e-SUS[. Endereço no arquivo: ...]") — descontinuada.
     # Limpa apenas o formato gerado; observação escrita pelo operador
@@ -425,3 +447,60 @@ def set_senha_hash(novo_hash):
     )
     conn.commit()
     conn.close()
+
+
+def get_preferencia(chave, padrao=""):
+    conn = get_db_connection()
+    row = conn.execute("SELECT valor FROM preferencias WHERE chave = ?", (chave,)).fetchone()
+    conn.close()
+    return row["valor"] if row else padrao
+
+
+def set_preferencia(chave, valor):
+    conn = get_db_connection()
+    conn.execute(
+        "INSERT INTO preferencias (chave, valor) VALUES (?, ?) "
+        "ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor",
+        (chave, str(valor or "")),
+    )
+    conn.commit()
+    conn.close()
+
+
+def salvar_perfil_mensal(ano_mes, dados_json):
+    """Upsert do retrato do mês (ano_mes = 'AAAA-MM')."""
+    conn = get_db_connection()
+    conn.execute(
+        "INSERT INTO perfil_mensal (ano_mes, dados, atualizado_em) VALUES (?, ?, ?) "
+        "ON CONFLICT(ano_mes) DO UPDATE SET dados = excluded.dados, "
+        "atualizado_em = excluded.atualizado_em",
+        (ano_mes, dados_json, datetime.now().isoformat(timespec="seconds")),
+    )
+    conn.commit()
+    conn.close()
+
+
+def primeiro_mes_perfil():
+    """Mês ('AAAA-MM') do retrato mais antigo registrado — a âncora da série.
+    O GLOB descarta lixo em bancos editados à mão."""
+    conn = get_db_connection()
+    row = conn.execute(
+        "SELECT MIN(ano_mes) AS inicio FROM perfil_mensal "
+        "WHERE ano_mes GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'"
+    ).fetchone()
+    conn.close()
+    return row["inicio"] if row and row["inicio"] else None
+
+
+def carregar_perfis_mensais(meses):
+    """Retratos dos meses pedidos ('AAAA-MM'), como {ano_mes: dados_json}."""
+    if not meses:
+        return {}
+    marcadores = ",".join("?" for _ in meses)
+    conn = get_db_connection()
+    rows = conn.execute(
+        f"SELECT ano_mes, dados FROM perfil_mensal WHERE ano_mes IN ({marcadores})",
+        list(meses),
+    ).fetchall()
+    conn.close()
+    return {row["ano_mes"]: row["dados"] for row in rows}

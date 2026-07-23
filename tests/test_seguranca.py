@@ -24,6 +24,8 @@ ROTAS_PROTEGIDAS_GET = [
     "/exportar",
     "/exportar/preview",
     "/exportar/pdf",
+    "/exportar/perfil-epidemiologico",
+    "/exportar/perfil-epidemiologico.xlsx",
     "/conta/senha",
     "/banco",
     "/banco/exportar",
@@ -52,6 +54,7 @@ ROTAS_PROTEGIDAS_POST = [
     "/lixeira/1/restaurar",
     "/lixeira/esvaziar",
     "/conta/senha",
+    "/exportar/perfil-epidemiologico",
 ]
 
 

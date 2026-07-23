@@ -25,6 +25,9 @@ def app_sem_senha(tmp_path):
     db.init_db()
 
     app_module._login_attempts.clear()
+    # Cada teste tem banco novo — o marcador diário do perfil não pode vazar
+    # de um teste para o outro.
+    app_module._perfil_registrado_dia = None
     app_module.app.config["WTF_CSRF_ENABLED"] = False
     yield app_module.app
     app_module.app.config["WTF_CSRF_ENABLED"] = False

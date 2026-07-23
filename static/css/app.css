@@ -857,6 +857,72 @@ html:not(.sidebar-collapsed) .app-shell nav .nav-active::before {
   outline-offset: 0;
 }
 
+/* Picker customizável dos selects de formulário (Chrome/Edge 135+): linhas
+   ~30% mais baixas que o popup nativo e lista com scroll próprio. Navegadores
+   sem suporte ignoram o bloco inteiro e seguem no popup nativo. */
+@supports (appearance: base-select) {
+  select.form-input,
+  select.form-input::picker(select) {
+    appearance: base-select;
+  }
+
+  select.form-input::picker(select) {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.65rem;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+    margin-top: 4px;
+    max-height: min(18rem, 50vh);
+    overflow-y: auto;
+    padding: 0.25rem;
+    scrollbar-width: thin;
+  }
+
+  select.form-input option {
+    border-radius: 0.4rem;
+    color: #0f172a;
+    font-size: 0.85rem;
+    line-height: 1.2;
+    padding: 0.125rem 0.6rem;
+  }
+
+  /* O checkmark padrão desloca só a opção marcada; o destaque fica no fundo. */
+  select.form-input option::checkmark {
+    display: none;
+  }
+
+  select.form-input option:hover,
+  select.form-input option:focus {
+    background: #eff6ff;
+  }
+
+  select.form-input option:checked {
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-weight: 600;
+  }
+
+  .theme-dark select.form-input::picker(select) {
+    background: #0f172a;
+    border-color: #334155;
+    box-shadow: 0 16px 40px rgba(2, 6, 23, 0.6);
+  }
+
+  .theme-dark select.form-input option {
+    color: #dbe4f0;
+  }
+
+  .theme-dark select.form-input option:hover,
+  .theme-dark select.form-input option:focus {
+    background: #1e293b;
+  }
+
+  .theme-dark select.form-input option:checked {
+    background: rgba(37, 99, 235, 0.3);
+    color: #8bbcff;
+  }
+}
+
 .danger-focus:focus {
   border-color: #dc2626;
   outline-color: rgba(220, 38, 38, 0.16);

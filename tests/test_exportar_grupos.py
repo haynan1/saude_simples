@@ -30,6 +30,34 @@ def _semear_territorio(logged_client):
     )
 
 
+def test_recorte_criancas_0_a_2_separado(logged_client):
+    """'Crianças 0 a 2 anos' é um recorte próprio, independente do 'até 11':
+    o bebê entra nos dois; a criança de mais idade só no grupo amplo."""
+    from datetime import datetime
+
+    from tests.test_sem_casa import _texto_pdf
+
+    criar_casa(logged_client)
+    criar_paciente(
+        logged_client, nome="Bebe Do Territorio", cpf="66666666666",
+        data_nascimento=datetime.now().strftime("%Y-01-10"), sexo="Feminino",
+    )
+    criar_paciente(
+        logged_client, nome="Crianca De Sete Anos", cpf="77777777777",
+        data_nascimento="2019-03-10", sexo="Masculino",
+    )
+    data = logged_client.get("/exportar/preview?grupos=criancas_0_2").get_json()
+    assert data["stats"]["total_pacientes"] == 1
+    amplo = logged_client.get("/exportar/preview?grupos=criancas").get_json()
+    assert amplo["stats"]["total_pacientes"] == 2
+    # O PDF do recorte lista o nome — é assim que se sabe QUEM compõe o número.
+    texto = _texto_pdf(
+        logged_client.get("/exportar/pdf?filtrar=1&grupos=criancas_0_2").data
+    )
+    assert b"Bebe Do Territorio" in texto
+    assert b"Crianca De Sete Anos" not in texto
+
+
 def test_uniao_de_grupos(logged_client):
     _semear_territorio(logged_client)
     data = logged_client.get("/exportar/preview?grupos=idosos&grupos=criancas").get_json()
