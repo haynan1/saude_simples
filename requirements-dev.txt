@@ -2,3 +2,6 @@
 pytest==9.1.1
 pip-audit==2.10.1
 pyflakes==3.4.0
+# Navegador para os testes end-to-end (tests/test_navegacao_e2e.py). Depois de
+# instalar, baixe o Chromium uma vez: python -m playwright install chromium
+playwright==1.61.0

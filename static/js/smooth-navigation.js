@@ -121,21 +121,8 @@
       currentShell.className = nextShell.className;
     }
 
-    // Fita de contexto (fica acima do #app-main, fora dele).
-    const curStrip = document.querySelector('.system-context-strip');
-    const nextStrip = nextDocument.querySelector('.system-context-strip');
-    if (curStrip && nextStrip) {
-      curStrip.replaceWith(nextStrip);
-    } else if (curStrip && !nextStrip) {
-      curStrip.remove();
-    } else if (!curStrip && nextStrip) {
-      const main = document.querySelector(MAIN_SELECTOR);
-      main?.parentElement?.insertBefore(nextStrip, main);
-    }
-
-    // Rótulos de identidade na sidebar (wrappers Alpine permanecem intactos).
+    // Rótulo de identidade na sidebar (wrapper Alpine permanece intacto).
     syncInner('[data-shell-brand]', nextDocument);
-    syncInner('[data-shell-user]', nextDocument);
   }
 
   function syncNav(nextDocument) {
@@ -152,48 +139,6 @@
       link.classList.toggle('nav-active', isActive);
       link.classList.toggle('text-white', isActive);
     });
-  }
-
-  // O contador de notificações vive na sidebar (fora do #app-main), então a
-  // troca parcial não o atualizava — só um reload completo. Aqui espelhamos o
-  // valor renderizado pelo servidor na resposta, para o badge sumir/atualizar
-  // na hora ao navegar (ex.: abrir Solicitações marca tudo como lido -> zera).
-  function syncNotifications(nextDocument) {
-    const next = nextDocument.querySelector('[data-notif-badge]');
-    const count = next ? next.textContent.trim() : '';
-    const hide = !count;
-    document.querySelectorAll('[data-notif-badge]').forEach((badge) => {
-      badge.textContent = count;
-      badge.classList.toggle('hidden', hide);
-    });
-  }
-
-  function syncChatWidget(nextDocument) {
-    const currentWidget = document.querySelector('#chat-widget');
-    const nextWidget = nextDocument.querySelector('#chat-widget');
-
-    if (currentWidget && nextWidget
-        && currentWidget.dataset.chatUnitId === nextWidget.dataset.chatUnitId) {
-      return;
-    }
-
-    if (currentWidget) {
-      window.Alpine?.destroyTree?.(currentWidget);
-      currentWidget.remove();
-    }
-
-    if (!nextWidget) return;
-
-    const shell = document.querySelector('.app-shell');
-    const confirmDialog = shell?.querySelector('#confirm-dialog');
-    if (!shell) return;
-
-    if (confirmDialog) {
-      confirmDialog.before(nextWidget);
-    } else {
-      shell.appendChild(nextWidget);
-    }
-    window.Alpine?.initTree?.(nextWidget);
   }
 
   function initNewContent(main) {
@@ -237,8 +182,6 @@
       document.title = nextDocument.title;
       syncShell(nextDocument);
       syncNav(nextDocument);
-      syncNotifications(nextDocument);
-      syncChatWidget(nextDocument);
       currentMain.replaceWith(nextMain);
       initNewContent(nextMain);
 

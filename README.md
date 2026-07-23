@@ -173,6 +173,26 @@ instance/database.db # banco SQLite (gerado automaticamente, não commitado)
 backups/             # cópias de segurança automáticas (não commitado)
 ```
 
+### Testes
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests
+```
+
+A maior parte da suíte usa o `test_client` do Flask (rápido, sem navegador). Os
+testes end-to-end (`tests/test_navegacao_e2e.py`) sobem o servidor de verdade e
+dirigem um Chromium real via Playwright — é o que prova a navegação sem recarregar
+a página e o diálogo de confirmação. Eles rodam junto com `pytest tests`, mas
+precisam do navegador baixado uma vez:
+
+```bash
+python -m playwright install chromium
+```
+
+Sem o Chromium, esses testes se **pulam** sozinhos (não quebram a suíte). Para
+rodar só eles, ou pular todos: `pytest -m e2e` / `pytest -m "not e2e"`.
+
 ### Rebuild do CSS (apenas se criar classes novas nos templates)
 
 O `static/css/tailwind.css` já vem compilado — o sistema funciona sem Node. Se você
@@ -193,3 +213,22 @@ npm run build:css
   roda sem autorização do servidor; Alpine.js usa o build CSP (sem `eval`).
 - Nenhum recurso externo (CDN, fontes, ícones) — tudo servido localmente.
 - `instance/`, `backups/` e `.env` ficam fora do controle de versão.
+
+### Dado sensível em repouso — criptografe o disco
+
+O banco (`instance/database.db`), os backups (`backups/`) e o `.db` exportado
+guardam dado pessoal de saúde (CPF, filiação, condições de saúde) **em texto
+claro** — como qualquer SQLite. O sistema é uma ferramenta local: a fronteira de
+confiança é a própria máquina do agente. Quem tem acesso ao disco tem acesso aos
+dados.
+
+Por isso, **habilite a criptografia de disco do sistema operacional** na máquina
+onde o Saúde Simples roda:
+
+- **Windows** — BitLocker (Painel de Controle → Criptografia de Unidade de Disco BitLocker).
+- **macOS** — FileVault (Ajustes → Privacidade e Segurança → FileVault).
+- **Linux** — LUKS (normalmente uma opção na instalação da distribuição).
+
+Sem isso, copiar o arquivo do banco ou uma pasta de backup vaza o território
+inteiro. É o único controle que fecha esse risco num deploy local — e é
+recomendação de conformidade com a LGPD para dado de saúde.
