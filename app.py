@@ -803,6 +803,34 @@ def get_casas_para_transferencia(excluir_casa_id=None):
     return [casa for casa in casas if casa["id"] != excluir_casa_id]
 
 
+def inserir_paciente_do_form(casa_id, nome):
+    """INSERT único dos dois fluxos de cadastro (pela casa e pela lista):
+    os campos do form são normalizados num lugar só."""
+    conn = get_db_connection()
+    conn.execute(
+        """
+        INSERT INTO pacientes (
+            casa_id, nome, cpf, telefone, data_nascimento, sexo, nome_pai, nome_mae,
+            condicoes_saude, observacao
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            casa_id,
+            nome,
+            formatar_cpf_ou_cns(request.form.get("cpf", "")),
+            formatar_telefone(request.form.get("telefone", "")),
+            request.form.get("data_nascimento", "").strip(),
+            request.form.get("sexo", "").strip(),
+            request.form.get("nome_pai", "").strip(),
+            request.form.get("nome_mae", "").strip(),
+            normalizar_condicoes(request.form.getlist("condicoes_saude")),
+            request.form.get("observacao", "").strip(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
 def redirect_apos_acao_no_paciente(casa_id):
     """Volta para a casa do paciente — ou, sem casa vinculada (ex.: importado
     do e-SUS ainda não alocado), para a lista de pacientes."""
@@ -1319,33 +1347,69 @@ def cadastrar_paciente(casa_id):
             )
             return render_template("cadastrar_paciente.html", casa=casa, paciente=request.form)
 
-        conn = get_db_connection()
-        conn.execute(
-            """
-            INSERT INTO pacientes (
-                casa_id, nome, cpf, telefone, data_nascimento, sexo, nome_pai, nome_mae,
-                condicoes_saude, observacao
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                casa_id,
-                nome,
-                formatar_cpf_ou_cns(request.form.get("cpf", "")),
-                formatar_telefone(request.form.get("telefone", "")),
-                request.form.get("data_nascimento", "").strip(),
-                request.form.get("sexo", "").strip(),
-                request.form.get("nome_pai", "").strip(),
-                request.form.get("nome_mae", "").strip(),
-                normalizar_condicoes(request.form.getlist("condicoes_saude")),
-                request.form.get("observacao", "").strip(),
-            ),
-        )
-        conn.commit()
-        conn.close()
+        inserir_paciente_do_form(casa_id, nome)
         flash("Paciente cadastrado com sucesso.", "success")
         return redirect(url_for("detalhes_casa", casa_id=casa_id))
 
     return render_template("cadastrar_paciente.html", casa=casa)
+
+
+@app.route("/pacientes/novo", methods=["GET", "POST"])
+@login_required
+def cadastrar_paciente_geral():
+    """Cadastro a partir da lista de pacientes: a casa é opcional — dá para
+    cadastrar sem casa e vincular depois pelo "Definir casa"."""
+    casas_opcoes = get_casas_para_transferencia()
+
+    if request.method == "POST":
+        nome = request.form.get("nome", "").strip()
+        casa_id_raw = request.form.get("casa_id", "").strip()
+
+        def render_erro():
+            return render_template(
+                "cadastrar_paciente_geral.html",
+                casa=None,
+                paciente=request.form,
+                casas_opcoes=casas_opcoes,
+                casa_id_selecionada=casa_id_raw,
+            )
+
+        if not nome:
+            flash("Informe o nome do paciente.", "danger")
+            return render_erro()
+
+        casa_id = None
+        if casa_id_raw:
+            casa_id, casa_error = parse_positive_int(casa_id_raw, "a casa", required=False)
+            if casa_error:
+                flash(casa_error, "danger")
+                return render_erro()
+            conn = get_db_connection()
+            existe = conn.execute("SELECT 1 FROM casas WHERE id = ?", (casa_id,)).fetchone()
+            conn.close()
+            if existe is None:
+                flash("Casa selecionada não existe.", "danger")
+                return render_erro()
+
+        duplicado = paciente_com_documento(apenas_digitos(request.form.get("cpf", "")))
+        if duplicado:
+            flash(
+                f"Este CPF/CNS já está cadastrado para {duplicado['nome']}. "
+                "Cada documento identifica um único paciente.",
+                "danger",
+            )
+            return render_erro()
+
+        inserir_paciente_do_form(casa_id, nome)
+        flash("Paciente cadastrado com sucesso.", "success")
+        return redirect(url_for("listar_pacientes"))
+
+    return render_template(
+        "cadastrar_paciente_geral.html",
+        casa=None,
+        casas_opcoes=casas_opcoes,
+        casa_id_selecionada="",
+    )
 
 
 @app.route("/paciente/<int:paciente_id>/editar", methods=["GET", "POST"])

@@ -18,6 +18,7 @@ ROTAS_PROTEGIDAS_GET = [
     "/casa/1/paciente/novo",
     "/paciente/1/editar",
     "/pacientes",
+    "/pacientes/novo",
     "/pacientes/importar",
     "/exportar",
     "/exportar/preview",
@@ -46,6 +47,7 @@ ROTAS_PROTEGIDAS_POST = [
     "/pacientes/status-em-massa",
     "/casa/1/transferir",
     "/pacientes/importar",
+    "/pacientes/novo",
     "/conta/senha",
 ]
 

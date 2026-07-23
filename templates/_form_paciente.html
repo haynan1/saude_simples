@@ -2,7 +2,28 @@
 <form method="post" class="rounded-xl border border-slate-200 bg-white">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-  <div class="px-6 pt-6">
+  {# Fluxo geral (aba Pacientes): a casa é opcional. No fluxo por casa, o
+     vínculo já vem da própria página e esta seção não existe. #}
+  {% if casas_opcoes is defined %}
+    <div class="px-6 pt-6">
+      <h2 class="text-sm font-bold text-slate-900">Casa</h2>
+    </div>
+    <div class="form-grid">
+      <div class="form-field md-span-2">
+        <label class="form-label" for="casa_id">Casa do paciente</label>
+        <select class="form-input" id="casa_id" name="casa_id">
+          <option value="">Sem casa — definir depois pela lista</option>
+          {% for opcao in casas_opcoes %}
+            <option value="{{ opcao.id }}" {% if casa_id_selecionada == opcao.id|string %}selected{% endif %}>
+              Casa {{ opcao.numero_casa }}{% if opcao.numero_quadra %} · Quadra {{ opcao.numero_quadra }}{% endif %} — {{ opcao.endereco }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="px-6 {{ 'pt-2' if casas_opcoes is defined else 'pt-6' }}">
     <h2 class="text-sm font-bold text-slate-900">Dados do paciente</h2>
   </div>
   <div class="form-grid">

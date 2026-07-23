@@ -101,6 +101,66 @@ def test_reativar_paciente(logged_client):
 
 
 # ---------------------------------------------------------------------------
+# Cadastro pela aba Pacientes (casa opcional)
+# ---------------------------------------------------------------------------
+def test_cadastrar_paciente_sem_casa_pela_lista(logged_client):
+    resp = logged_client.post(
+        "/pacientes/novo",
+        data={"nome": "Novo Sem Casa", "cpf": "12345678901", "casa_id": ""},
+    )
+    assert resp.status_code == 302
+    assert "/pacientes" in resp.headers["Location"]
+
+    conn = db.get_db_connection()
+    row = conn.execute("SELECT casa_id, cpf FROM pacientes WHERE nome = 'Novo Sem Casa'").fetchone()
+    conn.close()
+    assert row["casa_id"] is None
+    assert row["cpf"] == "123.456.789-01"
+
+
+def test_cadastrar_paciente_com_casa_pela_lista(logged_client):
+    criar_casa(logged_client)
+    resp = logged_client.post(
+        "/pacientes/novo",
+        data={"nome": "Novo Com Casa", "cpf": "12345678901", "casa_id": "1"},
+    )
+    assert resp.status_code == 302
+
+    conn = db.get_db_connection()
+    casa_id = conn.execute(
+        "SELECT casa_id FROM pacientes WHERE nome = 'Novo Com Casa'"
+    ).fetchone()["casa_id"]
+    conn.close()
+    assert casa_id == 1
+
+
+def test_cadastrar_pela_lista_valida_casa_e_documento(logged_client):
+    criar_casa(logged_client)
+    criar_paciente(logged_client, nome="Titular", cpf="12345678901")
+
+    # Casa inexistente: re-render com erro, nada gravado.
+    resp = logged_client.post(
+        "/pacientes/novo", data={"nome": "Casa Fantasma", "casa_id": "99"}
+    )
+    assert resp.status_code == 200
+
+    # CPF duplicado: rejeitado.
+    resp = logged_client.post(
+        "/pacientes/novo", data={"nome": "Impostor", "cpf": "123.456.789-01", "casa_id": ""}
+    )
+    assert resp.status_code == 200
+
+    # Nome vazio: rejeitado.
+    resp = logged_client.post("/pacientes/novo", data={"nome": "", "casa_id": ""})
+    assert resp.status_code == 200
+
+    conn = db.get_db_connection()
+    total = conn.execute("SELECT COUNT(*) AS c FROM pacientes").fetchone()["c"]
+    conn.close()
+    assert total == 1  # só o Titular
+
+
+# ---------------------------------------------------------------------------
 # Paginação
 # ---------------------------------------------------------------------------
 def _semear_muitos_pacientes(total):
