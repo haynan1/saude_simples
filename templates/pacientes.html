@@ -188,7 +188,7 @@
                   <form
                     method="post"
                     action="{{ url_for('excluir_paciente', paciente_id=paciente.id) }}"
-                    data-confirm="Excluir apaga o cadastro do banco de dados — para guardar o histórico, prefira mudar a situação. Um backup é criado antes."
+                    data-confirm="O cadastro vai para a Lixeira e pode ser restaurado por 30 dias. Para guardar no histórico ativo, prefira mudar a situação."
                     data-confirm-title="Excluir {{ paciente.nome }}?"
                   >
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

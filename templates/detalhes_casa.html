@@ -112,7 +112,7 @@
                   <form
                     method="post"
                     action="{{ url_for('excluir_paciente', paciente_id=paciente.id) }}"
-                    data-confirm="Excluir este paciente?"
+                    data-confirm="O cadastro vai para a Lixeira e pode ser restaurado por 30 dias."
                     data-confirm-title="Excluir {{ paciente.nome }}?"
                   >
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

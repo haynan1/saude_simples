@@ -223,6 +223,14 @@
         <span x-show="!sidebarCollapsed" x-cloak>Banco de dados</span>
       </a>
 
+      <a data-nav-link href="{{ url_for('lixeira') }}"
+         class="flex items-center py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white {{ 'nav-active text-white' if current_endpoint == 'lixeira' else '' }}"
+         :class="sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3'"
+         title="Lixeira">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        <span x-show="!sidebarCollapsed" x-cloak>Lixeira</span>
+      </a>
+
       <div class="mt-2 pt-3 border-t border-slate-800 space-y-1">
         <p class="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500" x-show="!sidebarCollapsed" x-cloak>Conta</p>
 
@@ -298,6 +306,7 @@
       <a href="{{ url_for('cadastrar_quadra') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Nova quadra</a>
       <a href="{{ url_for('exportar') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Exportar PDF</a>
       <a href="{{ url_for('banco') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Banco de dados</a>
+      <a href="{{ url_for('lixeira') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Lixeira</a>
       <a href="{{ url_for('alterar_senha') }}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-slate-200">Alterar senha</a>
       <form method="post" action="{{ url_for('logout') }}" data-no-smooth>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% from "_status_paciente.html" import badge_status %}
+{% block title %}Lixeira{% endblock %}
+
+{% block content %}
+<!-- Cabeçalho -->
+<div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-8">
+  <div>
+    <p class="text-xs font-bold uppercase tracking-wider text-blue-600 mb-1">Rede de segurança</p>
+    <h1 class="text-2xl font-bold tracking-tight text-slate-900">Lixeira</h1>
+    <p class="text-sm text-slate-500 mt-1">Pacientes excluídos ficam aqui por {{ retencao }} dias — restaure com um clique ou esvazie em definitivo.</p>
+  </div>
+  {% if itens %}
+    <div class="flex flex-wrap items-center gap-2">
+      <form method="post" action="{{ url_for('esvaziar_lixeira') }}"
+            data-confirm="Todos os registros da lixeira serão apagados em definitivo. Um backup é criado antes."
+            data-confirm-title="Esvaziar a lixeira ({{ itens|length }})?"
+            data-confirm-label="Sim, esvaziar">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn-danger-outline" type="submit">Esvaziar lixeira</button>
+      </form>
+    </div>
+  {% endif %}
+</div>
+
+{% if itens %}
+  <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+    <div class="flex items-center justify-between gap-3 px-5 pt-4 pb-3">
+      <div>
+        <h2 class="text-sm font-bold text-slate-900">Registros na lixeira</h2>
+        <p class="text-xs text-slate-500">{{ itens|length }} registro(s) aguardando</p>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-slate-50 text-left">
+            <th class="px-4 py-2.5 font-semibold text-slate-600">Nome</th>
+            <th class="px-4 py-2.5 font-semibold text-slate-600">CPF/CNS</th>
+            <th class="px-4 py-2.5 font-semibold text-slate-600">Situação na exclusão</th>
+            <th class="px-4 py-2.5 font-semibold text-slate-600">Excluído em</th>
+            <th class="px-4 py-2.5 font-semibold text-slate-600">Prazo</th>
+            <th class="px-4 py-2.5 font-semibold text-slate-600 text-right">Ações</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for item in itens %}
+            <tr class="table-row hover:bg-slate-50">
+              <td class="px-4 py-2.5">
+                <p class="font-semibold text-slate-900">{{ item.nome }}</p>
+                {% if item.telefone %}
+                  <p class="text-xs text-slate-500">{{ item.telefone|telefone }}</p>
+                {% endif %}
+              </td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-slate-600">{{ item.cpf|cpf_cns }}</td>
+              <td class="px-4 py-2.5 whitespace-nowrap">{{ badge_status(item.status) }}</td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-slate-600">{{ item.excluido_em_dt.strftime('%d/%m/%Y às %H:%M') }}</td>
+              <td class="px-4 py-2.5 whitespace-nowrap">
+                {% if item.dias_restantes <= 5 %}
+                  <span class="inline-flex items-center rounded-full bg-red-50 border border-red-200 px-2.5 py-0.5 text-[11px] font-bold text-red-700">{{ item.dias_restantes }} dia(s)</span>
+                {% else %}
+                  <span class="inline-flex items-center rounded-full bg-slate-100 border border-slate-200 px-2.5 py-0.5 text-[11px] font-bold text-slate-600">{{ item.dias_restantes }} dia(s)</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-2.5">
+                <div class="flex items-center justify-end gap-1.5" role="group" aria-label="Ações do registro de {{ item.nome }}">
+                  <form method="post" action="{{ url_for('restaurar_da_lixeira', paciente_id=item.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn-secondary house-tile-btn" type="submit"
+                            title="Restaurar {{ item.nome }}" aria-label="Restaurar {{ item.nome }}">Restaurar</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% else %}
+  <div class="rounded-xl border border-slate-200 bg-white flex flex-col items-center justify-center text-center py-14">
+    <div class="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center mb-3">
+      <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+    </div>
+    <h3 class="text-sm font-bold text-slate-900 mb-1">Lixeira vazia</h3>
+    <p class="text-sm text-slate-500 mb-4">Pacientes excluídos aparecem aqui e podem ser restaurados por {{ retencao }} dias.</p>
+    <a class="btn-secondary" href="{{ url_for('listar_pacientes') }}">Ir para Pacientes</a>
+  </div>
+{% endif %}
+{% endblock %}

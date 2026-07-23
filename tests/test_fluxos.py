@@ -1,7 +1,5 @@
 """Testes funcionais — CRUD de quadras/casas/pacientes, busca, exportação,
 integridade de dados (backups, cascata) e estados de erro."""
-import os
-
 import db
 from tests.conftest import criar_casa, criar_paciente, criar_quadra
 
@@ -246,6 +244,7 @@ def test_crud_paciente(logged_client):
     assert "Maria Editada" in logged_client.get("/casa/1").get_data(as_text=True)
 
     logged_client.post("/paciente/1/excluir")
+    logged_client.get("/casa/1")  # consome o flash da exclusão (contém o nome)
     assert "Maria Editada" not in logged_client.get("/casa/1").get_data(as_text=True)
 
 
@@ -393,13 +392,21 @@ def test_migracao_de_banco_legado_na_raiz(app, tmp_path, monkeypatch):
     assert not legado.exists()
 
 
-def test_exclusao_cria_backup_antes(logged_client):
+def test_exclusao_de_paciente_e_reversivel_pela_lixeira(logged_client):
+    """Contrato de dados sagrados: excluir paciente não destrói nada — o
+    registro vai para a lixeira e volta inteiro com um Restaurar."""
     criar_casa(logged_client)
-    criar_paciente(logged_client)
-    assert not os.path.isdir(db.BACKUP_DIR) or not os.listdir(db.BACKUP_DIR)
+    criar_paciente(logged_client, nome="Protegida Pela Lixeira")
     logged_client.post("/paciente/1/excluir")
-    backups = os.listdir(db.BACKUP_DIR)
-    assert any("antes_excluir_paciente" in nome for nome in backups)
+
+    conn = db.get_db_connection()
+    na_lixeira = conn.execute("SELECT COUNT(*) AS c FROM lixeira_pacientes").fetchone()["c"]
+    conn.close()
+    assert na_lixeira == 1
+
+    logged_client.post("/lixeira/1/restaurar")
+    body = logged_client.get("/casa/1").get_data(as_text=True)
+    assert "Protegida Pela Lixeira" in body
 
 
 # ---------------------------------------------------------------------------

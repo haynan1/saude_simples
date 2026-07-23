@@ -1474,18 +1474,35 @@ def editar_paciente(paciente_id):
     return render_template("editar_paciente.html", paciente=paciente, casa=casa)
 
 
+# ---------------------------------------------------------------------------
+# Lixeira de pacientes
+#
+# Excluir um paciente é mover para cá — restaurável por 30 dias. Depois disso
+# (ou ao esvaziar a lixeira, com backup antes), o registro sai de vez.
+# ---------------------------------------------------------------------------
+LIXEIRA_RETENCAO_DIAS = 30
+
+_COLUNAS_PACIENTE = (
+    "casa_id, nome, cpf, telefone, data_nascimento, sexo, "
+    "nome_pai, nome_mae, condicoes_saude, observacao, status"
+)
+
+
+def purgar_lixeira_expirada(conn):
+    """Remove da lixeira o que passou da retenção. Chamado no boot e ao abrir
+    a página — o prazo de 30 dias é honrado sem tarefa agendada."""
+    limite = (datetime.now() - timedelta(days=LIXEIRA_RETENCAO_DIAS)).isoformat(timespec="seconds")
+    cursor = conn.execute("DELETE FROM lixeira_pacientes WHERE excluido_em < ?", (limite,))
+    if cursor.rowcount:
+        logger.info("Lixeira: %s registro(s) expirados purgados.", cursor.rowcount)
+    return cursor.rowcount
+
+
 @app.route("/paciente/<int:paciente_id>/excluir", methods=["POST"])
 @login_required
 def excluir_paciente(paciente_id):
-    try:
-        criar_backup("antes_excluir_paciente")
-    except (sqlite3.Error, OSError) as exc:
-        logger.error("Falha ao criar backup antes de excluir paciente %s: %s", paciente_id, exc)
-        flash("Não foi possível criar backup de segurança. Exclusão cancelada.", "danger")
-        return redirect(url_for("index"))
-
     conn = get_db_connection()
-    paciente = conn.execute("SELECT casa_id FROM pacientes WHERE id = ?", (paciente_id,)).fetchone()
+    paciente = conn.execute("SELECT * FROM pacientes WHERE id = ?", (paciente_id,)).fetchone()
 
     if paciente is None:
         conn.close()
@@ -1493,15 +1510,152 @@ def excluir_paciente(paciente_id):
         return redirect(url_for("index"))
 
     casa_id = paciente["casa_id"]
+    # Mover para a lixeira e remover da tabela ativa — mesma transação.
+    conn.execute(
+        f"""
+        INSERT INTO lixeira_pacientes (id, {_COLUNAS_PACIENTE}, excluido_em)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            paciente["id"],
+            paciente["casa_id"],
+            paciente["nome"],
+            paciente["cpf"],
+            paciente["telefone"],
+            paciente["data_nascimento"],
+            paciente["sexo"],
+            paciente["nome_pai"],
+            paciente["nome_mae"],
+            paciente["condicoes_saude"],
+            paciente["observacao"],
+            status_paciente_de(paciente),
+            datetime.now().isoformat(timespec="seconds"),
+        ),
+    )
     conn.execute("DELETE FROM pacientes WHERE id = ?", (paciente_id,))
     conn.commit()
     conn.close()
-    flash("Paciente excluído com sucesso.", "success")
+    flash(
+        f"{paciente['nome']} foi para a Lixeira — restaurável por {LIXEIRA_RETENCAO_DIAS} dias.",
+        "success",
+    )
     # Exclusão disparada da lista de pacientes volta para a própria lista
     # (com filtros/página preservados); das demais telas, para a casa.
     if request.form.get("next"):
         return redirect(proxima_url_segura(request.form.get("next")))
     return redirect_apos_acao_no_paciente(casa_id)
+
+
+@app.route("/lixeira")
+@login_required
+def lixeira():
+    conn = get_db_connection()
+    purgar_lixeira_expirada(conn)
+    conn.commit()
+    registros = conn.execute(
+        "SELECT * FROM lixeira_pacientes ORDER BY excluido_em DESC, id DESC"
+    ).fetchall()
+    conn.close()
+
+    agora = datetime.now()
+    itens = []
+    for registro in registros:
+        try:
+            excluido_em = datetime.fromisoformat(registro["excluido_em"])
+        except ValueError:
+            excluido_em = agora
+        dias_restantes = max(0, LIXEIRA_RETENCAO_DIAS - (agora - excluido_em).days)
+        itens.append({**dict(registro), "dias_restantes": dias_restantes, "excluido_em_dt": excluido_em})
+
+    return render_template("lixeira.html", itens=itens, retencao=LIXEIRA_RETENCAO_DIAS)
+
+
+@app.route("/lixeira/<int:paciente_id>/restaurar", methods=["POST"])
+@login_required
+def restaurar_da_lixeira(paciente_id):
+    conn = get_db_connection()
+    item = conn.execute(
+        "SELECT * FROM lixeira_pacientes WHERE id = ?", (paciente_id,)
+    ).fetchone()
+
+    if item is None:
+        conn.close()
+        flash("Registro não encontrado na lixeira.", "warning")
+        return redirect(url_for("lixeira"))
+
+    # A mesma regra de unicidade do cadastro: se o CPF/CNS foi recadastrado
+    # enquanto o registro esperava na lixeira, não pode haver dois.
+    conn.close()
+    duplicado = paciente_com_documento(apenas_digitos(item["cpf"]))
+    if duplicado:
+        flash(
+            f"Este CPF/CNS agora pertence ao cadastro de {duplicado['nome']}. "
+            "Resolva o cadastro atual antes de restaurar.",
+            "danger",
+        )
+        return redirect(url_for("lixeira"))
+
+    conn = get_db_connection()
+    casa_id = item["casa_id"]
+    aviso_casa = ""
+    if casa_id is not None:
+        existe = conn.execute("SELECT 1 FROM casas WHERE id = ?", (casa_id,)).fetchone()
+        if existe is None:
+            casa_id = None
+            aviso_casa = " A casa original não existe mais — o paciente voltou sem casa."
+
+    valores = (
+        casa_id,
+        item["nome"],
+        item["cpf"],
+        item["telefone"],
+        item["data_nascimento"],
+        item["sexo"],
+        item["nome_pai"],
+        item["nome_mae"],
+        item["condicoes_saude"],
+        item["observacao"],
+        normalizar_status_paciente(item["status"]),
+    )
+    try:
+        # Preserva o id original quando livre (AUTOINCREMENT nunca o reusa).
+        conn.execute(
+            f"INSERT INTO pacientes (id, {_COLUNAS_PACIENTE}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (item["id"], *valores),
+        )
+    except sqlite3.IntegrityError:
+        conn.execute(
+            f"INSERT INTO pacientes ({_COLUNAS_PACIENTE}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            valores,
+        )
+    conn.execute("DELETE FROM lixeira_pacientes WHERE id = ?", (paciente_id,))
+    conn.commit()
+    conn.close()
+    flash(f"{item['nome']} restaurado com sucesso.{aviso_casa}", "success")
+    return redirect(url_for("lixeira"))
+
+
+@app.route("/lixeira/esvaziar", methods=["POST"])
+@login_required
+def esvaziar_lixeira():
+    try:
+        criar_backup("antes_esvaziar_lixeira")
+    except (sqlite3.Error, OSError) as exc:
+        logger.error("Falha ao criar backup antes de esvaziar a lixeira: %s", exc)
+        flash("Não foi possível criar backup de segurança. A lixeira não foi esvaziada.", "danger")
+        return redirect(url_for("lixeira"))
+
+    conn = get_db_connection()
+    cursor = conn.execute("DELETE FROM lixeira_pacientes")
+    conn.commit()
+    conn.close()
+
+    if cursor.rowcount == 0:
+        flash("A lixeira já estava vazia.", "info")
+    else:
+        logger.info("Lixeira esvaziada (%s registros) a partir de %s", cursor.rowcount, request.remote_addr)
+        flash(f"Lixeira esvaziada — {cursor.rowcount} registro(s) removidos em definitivo.", "success")
+    return redirect(url_for("lixeira"))
 
 
 # Paginação da lista de pacientes: tamanhos permitidos e padrão.
@@ -2708,6 +2862,11 @@ def preparar_primeiro_boot():
     (ou código de configuração inicial no terminal) e backup de inicialização.
     Chamado pelo run.py — a entrada canônica do servidor."""
     init_db()
+    # Honra a retenção da lixeira mesmo que a página nunca seja aberta.
+    conn = get_db_connection()
+    purgar_lixeira_expirada(conn)
+    conn.commit()
+    conn.close()
     if not garantir_senha_inicial(BOOTSTRAP_PASSWORD_HASH):
         codigo_setup = ensure_setup_token()
         # print, não logger: este é o canal de entrega do código — precisa

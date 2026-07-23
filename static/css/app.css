@@ -3265,6 +3265,10 @@ a.pagination-btn:hover { background: #f8fafc; border-color: var(--accent, #2563e
   padding: 0.75rem 1.05rem;
 }
 .btn-danger-outline:hover { background: #fef2f2; border-color: #dc2626; }
+/* Variante compacta: .btn-danger-outline vem depois de .house-tile-btn no
+   arquivo e vencia a cascata — a regra composta devolve o tamanho compacto
+   nos grupos de ações (mesmas medidas dos botões vizinhos). */
+.btn-danger-outline.house-tile-btn { border-radius: 0.6rem; font-size: 0.78rem; min-height: 2.1rem; padding: 0.35rem 0.7rem; }
 .theme-dark .btn-danger-outline { border-color: rgba(248, 113, 113, 0.4); color: #fca5a5; }
 .theme-dark .btn-danger-outline:hover { background: rgba(220, 38, 38, 0.12); border-color: #f87171; }
 

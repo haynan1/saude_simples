@@ -288,6 +288,29 @@ def init_db():
         )
         """
     )
+    # Lixeira: exclusão de paciente vira um "mover para cá" — restaurável por
+    # 30 dias. Espelha as colunas de pacientes + o momento da exclusão. Sem FK
+    # em casa_id de propósito: a casa pode ser excluída enquanto o registro
+    # espera na lixeira (restaura sem casa nesse caso).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS lixeira_pacientes (
+            id INTEGER PRIMARY KEY,
+            casa_id INTEGER,
+            nome TEXT NOT NULL,
+            cpf TEXT,
+            telefone TEXT,
+            data_nascimento TEXT,
+            sexo TEXT,
+            nome_pai TEXT,
+            nome_mae TEXT,
+            condicoes_saude TEXT,
+            observacao TEXT,
+            status TEXT NOT NULL DEFAULT 'ativo',
+            excluido_em TEXT NOT NULL
+        )
+        """
+    )
     # Migração de dados: a importação do e-SUS gerava uma observação
     # ("Importado do e-SUS[. Endereço no arquivo: ...]") — descontinuada.
     # Limpa apenas o formato gerado; observação escrita pelo operador

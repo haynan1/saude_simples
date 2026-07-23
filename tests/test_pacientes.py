@@ -232,10 +232,11 @@ def test_excluir_paciente_pela_lista_volta_para_a_lista(logged_client):
 
     conn = db.get_db_connection()
     nomes = [r["nome"] for r in conn.execute("SELECT nome FROM pacientes").fetchall()]
+    na_lixeira = conn.execute("SELECT COUNT(*) AS c FROM lixeira_pacientes").fetchone()["c"]
     conn.close()
     assert nomes == ["Que Fica"]
-    # Rede de segurança: backup criado antes da exclusão.
-    assert any("antes_excluir_paciente" in b["nome"] for b in db.listar_backups())
+    # Rede de segurança: o excluído está na lixeira, restaurável.
+    assert na_lixeira == 1
 
 
 def test_excluir_com_next_malicioso_nao_redireciona_fora(logged_client):
