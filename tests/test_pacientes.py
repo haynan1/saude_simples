@@ -149,6 +149,45 @@ def test_paginacao_valores_invalidos_caem_no_padrao(logged_client):
     assert "51–60" in body
 
 
+def test_ver_todos_desliga_a_paginacao(logged_client):
+    _semear_muitos_pacientes(60)
+    body = logged_client.get("/pacientes?por_pagina=todos").get_data(as_text=True)
+    assert "1–60" in body
+    assert "P000 Da Silva" in body and "P059 Da Silva" in body
+    assert 'aria-label="Paginação' not in body  # navegação some com página única
+    # A escolha sobrevive ao filtro (hidden no form de busca).
+    assert 'name="por_pagina" value="todos"' in body
+
+
+def test_excluir_paciente_pela_lista_volta_para_a_lista(logged_client):
+    criar_casa(logged_client)
+    criar_paciente(logged_client, nome="Para Excluir", cpf="11111111111")
+    criar_paciente(logged_client, nome="Que Fica", cpf="22222222222")
+
+    resp = logged_client.post(
+        "/paciente/1/excluir", data={"next": "/pacientes?status=ativo"}
+    )
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/pacientes?status=ativo")
+
+    conn = db.get_db_connection()
+    nomes = [r["nome"] for r in conn.execute("SELECT nome FROM pacientes").fetchall()]
+    conn.close()
+    assert nomes == ["Que Fica"]
+    # Rede de segurança: backup criado antes da exclusão.
+    assert any("antes_excluir_paciente" in b["nome"] for b in db.listar_backups())
+
+
+def test_excluir_com_next_malicioso_nao_redireciona_fora(logged_client):
+    criar_casa(logged_client)
+    criar_paciente(logged_client)
+    resp = logged_client.post(
+        "/paciente/1/excluir", data={"next": "https://evil.example.com"}
+    )
+    assert resp.status_code == 302
+    assert "evil.example.com" not in resp.headers["Location"]
+
+
 def test_janela_de_paginacao_com_elipses():
     import app as app_module
 

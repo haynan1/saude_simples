@@ -9,7 +9,7 @@
               busca=busca or None,
               status=status_filtro or None,
               quadra=quadra_filtro or None,
-              por_pagina=por_pagina if por_pagina != por_pagina_padrao else None,
+              por_pagina=por_pagina_token if por_pagina_token != por_pagina_padrao else None,
               pagina=n if n != 1 else None) -}}
 {%- endmacro %}
 <!-- Cabeçalho -->
@@ -68,7 +68,7 @@
     <p class="text-xs text-slate-500">Combine busca por nome/CPF/CNS, situação cadastral e quadra.</p>
   </div>
   <form method="get" action="{{ url_for('listar_pacientes') }}" role="search" class="flex flex-col md:flex-row gap-2">
-    {% if por_pagina != por_pagina_padrao %}<input type="hidden" name="por_pagina" value="{{ por_pagina }}">{% endif %}
+    {% if por_pagina_token != por_pagina_padrao %}<input type="hidden" name="por_pagina" value="{{ por_pagina_token }}">{% endif %}
     <input
       class="form-input flex-1"
       id="busca"
@@ -184,6 +184,21 @@
                   {% endif %}
                   <a class="btn-secondary house-tile-btn" href="{{ url_for('editar_paciente', paciente_id=paciente.id) }}"
                      title="Editar {{ paciente.nome }}" aria-label="Editar {{ paciente.nome }}">Editar</a>
+                  <form
+                    method="post"
+                    action="{{ url_for('excluir_paciente', paciente_id=paciente.id) }}"
+                    data-confirm="Excluir apaga o cadastro do banco de dados — para guardar o histórico, prefira mudar a situação. Um backup é criado antes."
+                    data-confirm-title="Excluir {{ paciente.nome }}?"
+                  >
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <button
+                      class="btn-danger-outline house-tile-btn"
+                      type="submit"
+                      title="Excluir {{ paciente.nome }} do banco de dados"
+                      aria-label="Excluir {{ paciente.nome }} do banco de dados"
+                    >Excluir</button>
+                  </form>
                 </div>
               </td>
             </tr>
@@ -206,8 +221,9 @@
           <label class="text-xs text-slate-500" for="por_pagina">Por página</label>
           <select class="pagination-size" id="por_pagina" name="por_pagina" data-submit-on-change>
             {% for opcao in opcoes_por_pagina %}
-              <option value="{{ opcao }}" {% if por_pagina == opcao %}selected{% endif %}>{{ opcao }}</option>
+              <option value="{{ opcao }}" {% if por_pagina_token == opcao|string %}selected{% endif %}>{{ opcao }}</option>
             {% endfor %}
+            <option value="todos" {% if por_pagina_token == 'todos' %}selected{% endif %}>Todos</option>
           </select>
         </form>
       </div>

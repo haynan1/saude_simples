@@ -1433,6 +1433,10 @@ def excluir_paciente(paciente_id):
     conn.commit()
     conn.close()
     flash("Paciente excluído com sucesso.", "success")
+    # Exclusão disparada da lista de pacientes volta para a própria lista
+    # (com filtros/página preservados); das demais telas, para a casa.
+    if request.form.get("next"):
+        return redirect(proxima_url_segura(request.form.get("next")))
     return redirect_apos_acao_no_paciente(casa_id)
 
 
@@ -1503,7 +1507,9 @@ def listar_pacientes():
 
     # Paginação server-side, aplicada DEPOIS dos filtros. Valores fora da
     # whitelist/intervalo caem no padrão — nunca 500 por query manipulada.
+    # "todos" desliga a paginação e mostra a lista inteira.
     por_pagina_raw = request.args.get("por_pagina", "")
+    ver_todos = por_pagina_raw == "todos"
     por_pagina = (
         int(por_pagina_raw)
         if por_pagina_raw.isdigit() and int(por_pagina_raw) in POR_PAGINA_OPCOES
@@ -1513,10 +1519,16 @@ def listar_pacientes():
     pagina = int(pagina_raw) if pagina_raw.isdigit() and int(pagina_raw) >= 1 else 1
 
     total_filtrado = len(filtrados)
-    total_paginas = max(1, -(-total_filtrado // por_pagina))
-    pagina = min(pagina, total_paginas)
-    inicio = (pagina - 1) * por_pagina
-    pagina_de_pacientes = filtrados[inicio:inicio + por_pagina]
+    if ver_todos:
+        pagina = 1
+        total_paginas = 1
+        inicio = 0
+        pagina_de_pacientes = filtrados
+    else:
+        total_paginas = max(1, -(-total_filtrado // por_pagina))
+        pagina = min(pagina, total_paginas)
+        inicio = (pagina - 1) * por_pagina
+        pagina_de_pacientes = filtrados[inicio:inicio + por_pagina]
 
     return render_template(
         "pacientes.html",
@@ -1532,8 +1544,8 @@ def listar_pacientes():
         filtro_ativo=bool(busca or status_filtro or quadra_filtro),
         pagina=pagina,
         total_paginas=total_paginas,
-        por_pagina=por_pagina,
-        por_pagina_padrao=POR_PAGINA_PADRAO,
+        por_pagina_token="todos" if ver_todos else str(por_pagina),
+        por_pagina_padrao=str(POR_PAGINA_PADRAO),
         opcoes_por_pagina=POR_PAGINA_OPCOES,
         paginas_visiveis=_janela_paginacao(pagina, total_paginas),
         inicio_exibicao=inicio + 1 if pagina_de_pacientes else 0,
