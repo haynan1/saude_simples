@@ -3131,6 +3131,10 @@ body.confirm-dialog-open { overflow: hidden; }
 /* Botões compactos dos cartões (casas/quadras) e variante de perigo discreta. */
 .house-tile-btn { border-radius: 0.6rem; font-size: 0.78rem; min-height: 2.1rem; padding: 0.35rem 0.7rem; }
 
+/* Alternador de ordem das casas: largura fixa para "Crescente"/"Decrescente"
+   ocuparem o mesmo espaço — sem salto de layout ao inverter o sentido. */
+.house-sort-toggle { min-width: 9.75rem; white-space: nowrap; }
+
 /* Situação do paciente: menu suspenso compacto com cor semântica por estado.
    A mudança aplica na hora (data-submit-on-change) — sem botão extra. */
 .status-select {

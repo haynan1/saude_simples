@@ -1210,6 +1210,11 @@ def alterar_senha():
 @login_required
 def index():
     busca = request.args.get("busca", "").strip()
+    # Ordenação da lista de casas pela numeração: crescente (padrão) ou decrescente.
+    ordem = request.args.get("ordem", "asc").strip().lower()
+    if ordem not in ("asc", "desc"):
+        ordem = "asc"
+    direcao_numero = "DESC" if ordem == "desc" else "ASC"
     conn = get_db_connection()
     quadras = conn.execute(
         """
@@ -1227,8 +1232,8 @@ def index():
         LEFT JOIN quadras ON quadras.id = casas.quadra_id
         LEFT JOIN pacientes ON pacientes.casa_id = casas.id AND {SQL_PACIENTE_ATIVO}
         GROUP BY casas.id
-        ORDER BY casas.numero_casa IS NULL, casas.numero_casa, quadras.numero_quadra IS NULL,
-                 quadras.numero_quadra, casas.id
+        ORDER BY casas.numero_casa IS NULL, casas.numero_casa {direcao_numero},
+                 quadras.numero_quadra IS NULL, quadras.numero_quadra, casas.id
         """
     ).fetchall()
     pacientes = conn.execute(
@@ -1286,6 +1291,7 @@ def index():
         quadras=quadras,
         stats=stats,
         busca=busca,
+        ordem=ordem,
         pacientes_busca=pacientes_busca,
         tipos_filtro=tipos_filtro,
         quadra_filtro=quadra_filtro,

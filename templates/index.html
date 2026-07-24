@@ -124,8 +124,20 @@
       </div>
       <div class="flex items-center gap-2">
         {% if filtro_ativo %}
-          <a class="btn-secondary house-tile-btn" href="{{ url_for('index') }}">Limpar filtro</a>
+          <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none) }}">Limpar filtro</a>
         {% endif %}
+        <a class="btn-secondary house-sort-toggle"
+           href="{{ url_for('index', ordem='desc' if ordem == 'asc' else 'asc', busca=busca or none, quadra=quadra_filtro or none, tipo=tipos_filtro or none) }}"
+           title="Ordenar casas pela numeração — {{ 'crescente' if ordem == 'asc' else 'decrescente' }} agora. Clique para inverter."
+           aria-label="Ordenar casas pela numeração, {{ 'crescente' if ordem == 'asc' else 'decrescente' }}. Clique para inverter.">
+          {% if ordem == 'asc' %}
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9M3 12h5m9-1v9m0 0l-3-3m3 3l3-3"/></svg>
+            Crescente
+          {% else %}
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h5M3 8h9M3 12h13m1-1v9m0 0l-3-3m3 3l3-3"/></svg>
+            Decrescente
+          {% endif %}
+        </a>
         <button type="button" class="btn-secondary" data-filter-open>
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
           Filtrar
@@ -175,7 +187,7 @@
       <div class="flex flex-col items-center justify-center text-center py-12">
         <h3 class="text-sm font-bold text-slate-900 mb-1">Nenhuma casa corresponde ao filtro</h3>
         <p class="text-sm text-slate-500 mb-4">Ajuste a seleção de tipos/quadra ou limpe o filtro.</p>
-        <a class="btn-secondary" href="{{ url_for('index') }}">Limpar filtro</a>
+        <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none) }}">Limpar filtro</a>
       </div>
     {% else %}
       <div class="flex flex-col items-center justify-center text-center py-12">
@@ -231,6 +243,7 @@
   <section class="filter-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="filter-dialog-title">
     <form method="get" action="{{ url_for('index') }}">
       {% if busca %}<input type="hidden" name="busca" value="{{ busca }}">{% endif %}
+      {% if ordem == 'desc' %}<input type="hidden" name="ordem" value="desc">{% endif %}
       <header class="filter-dialog-head">
         <div>
           <p class="filter-dialog-kicker">Casas</p>
@@ -270,7 +283,7 @@
       </div>
 
       <footer class="filter-dialog-foot">
-        <a class="btn-secondary" href="{{ url_for('index') }}">Limpar filtro</a>
+        <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none) }}">Limpar filtro</a>
         <button type="submit" class="btn-primary">Aplicar filtro</button>
       </footer>
     </form>

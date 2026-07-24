@@ -94,6 +94,43 @@ def test_casas_listadas_em_ordem_de_numeracao(logged_client):
     assert "quadra-list-scroll" in body
 
 
+def test_casas_ordenacao_decrescente(logged_client):
+    """?ordem=desc inverte a numeração; padrão e valor inválido caem em crescente."""
+    import re
+
+    criar_casa(logged_client, endereco="Rua C", numero="9", quadra_id="")
+    criar_casa(logged_client, endereco="Rua A", numero="2", quadra_id="")
+    criar_casa(logged_client, endereco="Rua B", numero="5", quadra_id="")
+
+    def numeros_de(query):
+        body = logged_client.get(query).get_data(as_text=True)
+        secao = body.split("Cadastrar casa")[1].split("Quadras")[0]
+        return [int(n) for n in re.findall(r"Casa (\d+)", secao)]
+
+    assert numeros_de("/?ordem=desc") == [9, 5, 2]
+    assert numeros_de("/?ordem=asc") == [2, 5, 9]
+    # Valor inválido não quebra: volta ao padrão crescente.
+    assert numeros_de("/?ordem=lixo") == [2, 5, 9]
+
+
+def test_ordenacao_preserva_filtro_ativo(logged_client):
+    """O botão de ordem mantém o filtro por tipo e o próprio sentido no link."""
+    _montar_territorio_para_filtro(logged_client)
+    body = logged_client.get("/?tipo=loja&ordem=desc").get_data(as_text=True)
+    # Recorte por tipo preservado.
+    assert "Loja Q1" in body
+    assert "Loja sem quadra" in body
+    assert "Domicílio Q1" not in body
+    # Ordem decrescente aplicada dentro do recorte.
+    secao = body.split("Cadastrar casa")[1].split("Quadras")[0]
+    import re
+
+    assert [int(n) for n in re.findall(r"Casa (\d+)", secao)] == [3, 2]
+    # O botão exibe o estado atual e o link do filtro leva ordem junto.
+    assert "Decrescente" in body
+    assert 'name="ordem" value="desc"' in body
+
+
 def test_tipo_de_imovel_no_cadastro_e_nas_telas(logged_client):
     logged_client.post(
         "/casa/nova",
