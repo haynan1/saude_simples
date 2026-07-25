@@ -127,7 +127,7 @@
           <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none) }}">Limpar filtro</a>
         {% endif %}
         <a class="btn-secondary house-sort-toggle"
-           href="{{ url_for('index', ordem='desc' if ordem == 'asc' else 'asc', busca=busca or none, quadra=quadra_filtro or none, tipo=tipos_filtro or none) }}"
+           href="{{ url_for('index', ordem='desc' if ordem == 'asc' else 'asc', busca=busca or none, quadra=quadra_filtro or none, tipo=tipos_filtro or none, contabilizar=contabilizar_filtro or none) }}"
            title="Ordenar casas pela numeração — {{ 'crescente' if ordem == 'asc' else 'decrescente' }} agora. Clique para inverter."
            aria-label="Ordenar casas pela numeração, {{ 'crescente' if ordem == 'asc' else 'decrescente' }}. Clique para inverter.">
           {% if ordem == 'asc' %}
@@ -141,7 +141,7 @@
         <button type="button" class="btn-secondary" data-filter-open>
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
           Filtrar
-          {% if filtro_ativo %}<span class="rounded-full bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{{ tipos_filtro|length + (1 if quadra_filtro else 0) }}</span>{% endif %}
+          {% if filtro_ativo %}<span class="rounded-full bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{{ tipos_filtro|length + (1 if quadra_filtro else 0) + (1 if contabilizar_filtro else 0) }}</span>{% endif %}
         </button>
         <a class="btn-secondary" href="{{ url_for('cadastrar_casa') }}">Cadastrar casa</a>
       </div>
@@ -150,8 +150,9 @@
     {% if casas %}
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 panel-scroll house-board-scroll">
         {% for casa in casas %}
+          {% set tipo = casa.tipo_imovel or 'domicilio' %}
+          {% set conta_no_relatorio = casa|contabilizada %}
           <article class="rounded-lg border border-slate-200 bg-slate-50 p-4 flex flex-col gap-2">
-            {% set tipo = casa.tipo_imovel or 'domicilio' %}
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
                 <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{{ 'Quadra ' ~ casa.numero_quadra if casa.numero_quadra else 'Sem quadra' }}</p>
@@ -165,6 +166,13 @@
                   <span class="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs font-bold text-blue-700">{{ casa.total_pacientes }} pac.</span>
                 {% elif tipo in tipos_imovel_residenciais %}
                   <span class="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-bold text-slate-600">vazia</span>
+                {% endif %}
+                {% if not conta_no_relatorio %}
+                  <span class="inline-flex items-center gap-1 rounded-full bg-slate-200 border border-slate-300 px-2.5 py-0.5 text-xs font-bold text-slate-700"
+                        title="Esta casa e os moradores dela não entram nas contagens do território">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+                    fora do relatório
+                  </span>
                 {% endif %}
               </div>
             </div>
@@ -279,6 +287,17 @@
               Quadra {{ quadra.numero_quadra }} ({{ quadra.total_casas }} casa{{ 's' if quadra.total_casas != 1 }})
             </option>
           {% endfor %}
+        </select>
+
+        <p class="form-label mt-5">Contabilização</p>
+        <select class="form-input" name="contabilizar">
+          <option value="">Todas as casas</option>
+          <option value="1" {% if contabilizar_filtro == '1' %}selected{% endif %}>
+            Contam no relatório ({{ total_casas_geral - fora_do_relatorio_total }})
+          </option>
+          <option value="0" {% if contabilizar_filtro == '0' %}selected{% endif %}>
+            Fora do relatório ({{ fora_do_relatorio_total }})
+          </option>
         </select>
       </div>
 

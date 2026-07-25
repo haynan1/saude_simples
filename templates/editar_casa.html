@@ -47,6 +47,23 @@
       <label class="form-label" for="endereco">Endereço</label>
       <input class="form-input" id="endereco" name="endereco" type="text" value="{{ casa.endereco }}" required>
     </div>
+
+    <div class="form-field md-span-2">
+      <label class="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 cursor-pointer" for="contabilizar">
+        <input
+          class="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600"
+          id="contabilizar"
+          name="contabilizar"
+          type="checkbox"
+          value="1"
+          {% if casa|contabilizada %}checked{% endif %}
+        >
+        <span class="min-w-0">
+          <span class="block text-sm font-semibold text-slate-900">Contar esta casa no relatório</span>
+          <span class="block text-xs text-slate-500 mt-0.5">Desmarcado, a casa e os moradores dela saem das contagens do território, do perfil epidemiológico e das exportações. Continuam visíveis e editáveis aqui.</span>
+        </span>
+      </label>
+    </div>
   </div>
 
   <div class="form-actions border-t border-slate-100 px-6 py-4">

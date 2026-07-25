@@ -327,6 +327,21 @@ STATUS_PACIENTE_POR_CODIGO = {opcao["codigo"]: opcao["label"] for opcao in STATU
 # existir sem NOT NULL — NULL conta como ativo, igual ao legado.
 SQL_PACIENTE_ATIVO = "COALESCE(pacientes.status, 'ativo') = 'ativo'"
 
+# Casa fora do relatório: some das contagens do território (painel, perfil
+# epidemiológico e exportações), mas continua na lista e editável. COALESCE
+# cobre banco importado antes da coluna existir — ausência conta como dentro.
+SQL_CASA_CONTABILIZADA = "COALESCE(casas.contabilizar, 1) = 1"
+
+
+def casa_contabilizada(casa):
+    """Lê a marcação de uma linha de casa tolerando bancos antigos importados
+    (a coluna pode não existir até o init_db rodar) e valores nulos."""
+    try:
+        valor = casa["contabilizar"]
+    except (IndexError, KeyError):
+        return True
+    return True if valor is None else bool(valor)
+
 
 def normalizar_status_paciente(value):
     value = str(value or "").strip()
@@ -717,18 +732,28 @@ def carregar_dados_relatorio(condicoes_selecionadas=None, filtro_sem_selecao=Fal
     condicoes_selecionadas = condicoes_selecionadas or []
     grupos_selecionados = grupos_selecionados or []
     conn = get_db_connection()
+    # Casa marcada como fora do relatório não entra aqui — e, por tabela, os
+    # moradores dela também não, já que o LEFT JOIN abaixo os descarta junto.
     casas = conn.execute(
         f"""
         SELECT casas.*, quadras.numero_quadra, COUNT(pacientes.id) AS total_pacientes
         FROM casas
         LEFT JOIN quadras ON quadras.id = casas.quadra_id
         LEFT JOIN pacientes ON pacientes.casa_id = casas.id AND {SQL_PACIENTE_ATIVO}
+        WHERE {SQL_CASA_CONTABILIZADA}
         GROUP BY casas.id
         ORDER BY quadras.numero_quadra IS NULL, quadras.numero_quadra, casas.numero_casa, casas.id
         """
     ).fetchall()
+    # Morador sem casa continua contando: o LEFT JOIN deixa contabilizar NULL,
+    # e o COALESCE trata ausência como dentro do relatório.
     pacientes = conn.execute(
-        f"SELECT * FROM pacientes WHERE {SQL_PACIENTE_ATIVO} ORDER BY nome"
+        f"""
+        SELECT pacientes.* FROM pacientes
+        LEFT JOIN casas ON casas.id = pacientes.casa_id
+        WHERE {SQL_PACIENTE_ATIVO} AND {SQL_CASA_CONTABILIZADA}
+        ORDER BY pacientes.nome
+        """
     ).fetchall()
     conn.close()
 
@@ -946,6 +971,7 @@ app.add_template_filter(listar_condicoes, "condicoes_lista")
 app.add_template_filter(listar_condicao_codigos, "condicoes_codigos")
 app.add_template_filter(status_paciente_label, "status_paciente")
 app.add_template_filter(status_paciente_de, "status_codigo")
+app.add_template_filter(casa_contabilizada, "contabilizada")
 
 
 @app.context_processor
@@ -1236,8 +1262,14 @@ def index():
                  quadras.numero_quadra IS NULL, quadras.numero_quadra, casas.id
         """
     ).fetchall()
+    # Indicadores ignoram quem mora em casa marcada como fora do relatório.
     pacientes = conn.execute(
-        f"SELECT sexo, data_nascimento, condicoes_saude FROM pacientes WHERE {SQL_PACIENTE_ATIVO}"
+        f"""
+        SELECT pacientes.sexo, pacientes.data_nascimento, pacientes.condicoes_saude
+        FROM pacientes
+        LEFT JOIN casas ON casas.id = pacientes.casa_id
+        WHERE {SQL_PACIENTE_ATIVO} AND {SQL_CASA_CONTABILIZADA}
+        """
     ).fetchall()
     pacientes_busca = []
     if busca:
@@ -1255,23 +1287,31 @@ def index():
         ]
     conn.close()
     # Indicadores sempre sobre o território inteiro — o filtro recorta apenas
-    # a lista de casas.
-    stats = build_dashboard_stats(casas, pacientes)
+    # a lista de casas. A casa fora do relatório continua na lista, com selo,
+    # mas não entra na conta.
+    stats = build_dashboard_stats([c for c in casas if casa_contabilizada(c)], pacientes)
 
-    # Filtro de casas: por tipo de imóvel (multi) e/ou por quadra.
+    # Filtro de casas: por tipo de imóvel (multi), por quadra e/ou pela
+    # marcação de contabilização.
     tipos_filtro = [
         tipo for tipo in request.args.getlist("tipo") if tipo in TIPOS_IMOVEL_POR_CODIGO
     ]
     quadra_filtro = request.args.get("quadra", "").strip()
+    contabilizar_filtro = request.args.get("contabilizar", "").strip()
+    if contabilizar_filtro not in ("1", "0"):
+        contabilizar_filtro = ""
 
     # Contagens exibidas no modal — calculadas ANTES do recorte, para o
     # operador saber quantos imóveis existem de cada tipo/quadra.
     contagem_tipos = {opcao["codigo"]: 0 for opcao in TIPOS_IMOVEL_OPCOES}
     sem_quadra_total = 0
+    fora_do_relatorio_total = 0
     for casa in casas:
         contagem_tipos[tipo_imovel_de(casa)] += 1
         if casa["quadra_id"] is None:
             sem_quadra_total += 1
+        if not casa_contabilizada(casa):
+            fora_do_relatorio_total += 1
 
     total_casas_geral = len(casas)
     casas_filtradas = casas
@@ -1284,6 +1324,11 @@ def index():
         casas_filtradas = [casa for casa in casas_filtradas if casa["quadra_id"] == int(quadra_filtro)]
     else:
         quadra_filtro = ""
+    if contabilizar_filtro:
+        dentro = contabilizar_filtro == "1"
+        casas_filtradas = [
+            casa for casa in casas_filtradas if casa_contabilizada(casa) == dentro
+        ]
 
     return render_template(
         "index.html",
@@ -1295,10 +1340,12 @@ def index():
         pacientes_busca=pacientes_busca,
         tipos_filtro=tipos_filtro,
         quadra_filtro=quadra_filtro,
+        contabilizar_filtro=contabilizar_filtro,
         contagem_tipos=contagem_tipos,
         sem_quadra_total=sem_quadra_total,
+        fora_do_relatorio_total=fora_do_relatorio_total,
         total_casas_geral=total_casas_geral,
-        filtro_ativo=bool(tipos_filtro or quadra_filtro),
+        filtro_ativo=bool(tipos_filtro or quadra_filtro or contabilizar_filtro),
     )
 
 
@@ -1495,10 +1542,14 @@ def editar_casa(casa_id):
             flash(numero_error, "danger")
             return render_template("editar_casa.html", casa=casa, quadras=quadras)
 
+        # Checkbox não marcada não é enviada pelo navegador — ausência aqui
+        # significa "fora do relatório", que é o que o formulário mostra.
+        contabilizar = 1 if request.form.get("contabilizar") == "1" else 0
         conn = get_db_connection()
         conn.execute(
-            "UPDATE casas SET quadra_id = ?, numero_casa = ?, endereco = ?, tipo_imovel = ? WHERE id = ?",
-            (quadra_id, numero_casa, endereco, tipo_imovel, casa_id),
+            "UPDATE casas SET quadra_id = ?, numero_casa = ?, endereco = ?, tipo_imovel = ?, "
+            "contabilizar = ? WHERE id = ?",
+            (quadra_id, numero_casa, endereco, tipo_imovel, contabilizar, casa_id),
         )
         conn.commit()
         conn.close()
@@ -1506,6 +1557,33 @@ def editar_casa(casa_id):
         return redirect(url_for("detalhes_casa", casa_id=casa_id))
 
     return render_template("editar_casa.html", casa=casa, quadras=quadras)
+
+
+@app.route("/casa/<int:casa_id>/contabilizar", methods=["POST"])
+@login_required
+def alternar_contabilizacao_casa(casa_id):
+    """Liga/desliga a casa (e, com ela, seus moradores) das contagens do
+    território. Não apaga e não esconde nada: é só o recorte do relatório."""
+    destino = proxima_url_segura(request.form.get("next"))
+    casa = get_house_or_404(casa_id)
+    if casa is None:
+        return redirect(url_for("index"))
+
+    contabilizar = 1 if request.form.get("contabilizar") == "1" else 0
+    conn = get_db_connection()
+    conn.execute("UPDATE casas SET contabilizar = ? WHERE id = ?", (contabilizar, casa_id))
+    conn.commit()
+    conn.close()
+
+    if contabilizar:
+        flash(f"Casa {casa['numero_casa']} voltou a contar no relatório.", "success")
+    else:
+        flash(
+            f"Casa {casa['numero_casa']} ficou fora do relatório — ela e os moradores "
+            "dela saem das contagens do território.",
+            "success",
+        )
+    return redirect(destino)
 
 
 @app.route("/casa/<int:casa_id>/excluir", methods=["POST"])

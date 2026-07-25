@@ -241,6 +241,7 @@ def init_db():
             quadra_id INTEGER,
             numero_casa INTEGER,
             endereco TEXT NOT NULL,
+            contabilizar INTEGER NOT NULL DEFAULT 1,
             FOREIGN KEY(quadra_id) REFERENCES quadras(id) ON DELETE SET NULL
         )
         """
@@ -280,6 +281,11 @@ def init_db():
     if "tipo_imovel" not in casa_columns:
         # Imóveis existentes eram todos domicílios — o default preenche o legado.
         conn.execute("ALTER TABLE casas ADD COLUMN tipo_imovel TEXT NOT NULL DEFAULT 'domicilio'")
+    if "contabilizar" not in casa_columns:
+        # Casa fora do relatório: ela e os moradores dela saem das contagens do
+        # território, mas continuam visíveis e editáveis na operação. Legado
+        # entra contabilizado — era o comportamento único até aqui.
+        conn.execute("ALTER TABLE casas ADD COLUMN contabilizar INTEGER NOT NULL DEFAULT 1")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS configuracao (
