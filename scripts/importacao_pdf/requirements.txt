@@ -1,0 +1,4 @@
+# Dependência exclusiva dos scripts de importação — o app não usa pypdf.
+# Instale só quando for reprocessar o caderno:
+#     pip install -r scripts/importacao_pdf/requirements.txt
+pypdf==6.14.2
