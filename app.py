@@ -25,7 +25,16 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    CondPageBreak,
+    Image,
+    KeepTogether,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -411,6 +420,29 @@ def pdf_text(value, style):
 
 def pdf_count(value, style):
     return Paragraph(xml_escape(str(value if value not in (None, "") else 0)), style)
+
+
+# Ficha do paciente no PDF: rótulo apagado, valor em destaque, tudo correndo
+# na mesma linha. O ponto médio é o único separador — vírgula competiria com
+# a pontuação dos próprios dados (endereço, observação).
+PDF_COR_ROTULO = "#868e96"
+PDF_SEPARADOR = '<font color="#adb5bd">&#160;&#183;&#160;</font>'
+
+
+def pdf_campo(rotulo, valor):
+    """Campo inline do bloco do paciente. Devolve string vazia quando não há
+    valor: campo em branco não ocupa espaço no relatório. Cadastro recém-
+    -importado do e-SUS vem quase todo vazio, e era a parede de "-" que
+    deixava a lista ilegível."""
+    valor = str(valor or "").strip()
+    if not valor:
+        return ""
+    return f'<font color="{PDF_COR_ROTULO}">{xml_escape(rotulo)}</font>&#160;{xml_escape(valor)}'
+
+
+def pdf_linha_de_campos(campos):
+    """Junta só os campos preenchidos em uma única linha de texto."""
+    return PDF_SEPARADOR.join(campo for campo in campos if campo)
 
 
 def pdf_image(path, max_width, max_height):
@@ -2438,38 +2470,48 @@ def exportar_pdf():
 
     data_geracao = datetime.now().strftime("%d/%m/%Y às %H:%M")
 
+    # O Frame do SimpleDocTemplate come 6pt de cada lado da margem — parágrafo
+    # começa nesse eixo, tabela larga demais estoura para fora dele. Uma medida
+    # só, usada por tudo (inclusive pelo cabeçalho desenhado no canvas), é o que
+    # mantém título, régua, tabela e ficha no mesmo prumo.
+    margem_pagina = 1.5 * cm
+    recuo_frame = 6
+    eixo_esquerdo = margem_pagina + recuo_frame
+    eixo_direito = A4[0] - margem_pagina - recuo_frame
+
     def adicionar_cabecalho_rodape(canvas, doc):
         canvas.saveState()
         if doc.page > 1:
             canvas.setFont("Helvetica-Bold", 8)
             canvas.setFillColor(colors.HexColor("#0b5ed7"))
-            canvas.drawString(1.5 * cm, A4[1] - 1.1 * cm, "SAÚDE SIMPLES")
+            canvas.drawString(eixo_esquerdo, A4[1] - 1.1 * cm, "SAÚDE SIMPLES")
             canvas.setFont("Helvetica", 8)
             canvas.setFillColor(colors.HexColor("#495057"))
             largura_marca = canvas.stringWidth("SAÚDE SIMPLES", "Helvetica-Bold", 8)
             canvas.drawString(
-                1.5 * cm + largura_marca + 6, A4[1] - 1.1 * cm, "Relatório do Território"
+                eixo_esquerdo + largura_marca + 6, A4[1] - 1.1 * cm, "Relatório do Território"
             )
             canvas.setFillColor(colors.HexColor("#6c757d"))
-            canvas.drawRightString(A4[0] - 1.5 * cm, A4[1] - 1.1 * cm, f"Gerado em {data_geracao}")
+            canvas.drawRightString(eixo_direito, A4[1] - 1.1 * cm, f"Gerado em {data_geracao}")
             canvas.setStrokeColor(colors.HexColor("#dee2e6"))
-            canvas.line(1.5 * cm, A4[1] - 1.3 * cm, A4[0] - 1.5 * cm, A4[1] - 1.3 * cm)
+            canvas.line(eixo_esquerdo, A4[1] - 1.3 * cm, eixo_direito, A4[1] - 1.3 * cm)
 
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(colors.HexColor("#6c757d"))
-        canvas.drawString(1.5 * cm, 0.9 * cm, "Saúde Simples")
-        canvas.drawRightString(A4[0] - 1.5 * cm, 0.9 * cm, f"Página {doc.page}")
+        canvas.drawString(eixo_esquerdo, 0.9 * cm, "Saúde Simples")
+        canvas.drawRightString(eixo_direito, 0.9 * cm, f"Página {doc.page}")
         canvas.restoreState()
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=1.5 * cm,
-        leftMargin=1.5 * cm,
+        rightMargin=margem_pagina,
+        leftMargin=margem_pagina,
         topMargin=1.7 * cm,
         bottomMargin=1.5 * cm,
     )
+    largura = doc.width - 2 * recuo_frame
     styles = getSampleStyleSheet()
     # Cabeçalho editorial: overline de marca, título forte à esquerda e
     # metadados à direita — hierarquia de documento, não de banner.
@@ -2529,23 +2571,47 @@ def exportar_pdf():
         spaceBefore=10,
         spaceAfter=8,
     )
+    # Faixa da casa em azul claro, não em azul cheio: o relatório é impresso e
+    # levado a campo. Barra chapada em cada casa come toner, escurece na
+    # fotocópia e, repetida dezenas de vezes, é o que fazia a página pesar.
     house_style = ParagraphStyle(
         "CasaTitulo",
         parent=styles["Heading2"],
         fontName="Helvetica-Bold",
-        fontSize=12,
+        fontSize=11.5,
         leading=14,
-        textColor=colors.white,
+        spaceAfter=2,
+        textColor=colors.HexColor("#084298"),
     )
+    # Mesmo leading do título: as duas células do cabeçalho compartilham a
+    # linha de base, mesmo com corpos diferentes.
+    house_count_style = ParagraphStyle(
+        "CasaContagem",
+        parent=house_style,
+        fontSize=8.5,
+        spaceAfter=0,
+        textColor=colors.HexColor("#0a58ca"),
+        alignment=2,
+    )
+    house_meta_style = ParagraphStyle(
+        "CasaEndereco",
+        parent=styles["BodyText"],
+        fontSize=8,
+        leading=11,
+        textColor=colors.HexColor("#495057"),
+    )
+    # A quadra é o capítulo do território: preto, maior que a casa, com um fio
+    # abaixo. O azul fica reservado às seções do documento — dois papéis, duas
+    # linguagens, sem competir por atenção.
     block_style = ParagraphStyle(
         "QuadraTitulo",
         parent=styles["Heading2"],
         fontName="Helvetica-Bold",
         fontSize=13,
         leading=16,
-        textColor=colors.HexColor("#0b5ed7"),
-        spaceBefore=8,
-        spaceAfter=6,
+        textColor=colors.HexColor("#212529"),
+        spaceBefore=0,
+        spaceAfter=0,
     )
     normal_style = ParagraphStyle(
         "TextoNormal",
@@ -2569,11 +2635,39 @@ def exportar_pdf():
         textColor=colors.HexColor("#0b5ed7"),
         alignment=1,
     )
-    empty_style = ParagraphStyle(
-        "Vazio",
-        parent=normal_style,
+    # Ficha do paciente: nome em destaque e os dados correndo em linha. Antes
+    # eram cinco colunas estreitas — o nome quebrava em três linhas e o olho
+    # tinha que costurar célula por célula para ler uma pessoa só.
+    patient_name_style = ParagraphStyle(
+        "PacienteNome",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=9.5,
+        leading=12,
+        spaceAfter=1.5,
+        textColor=colors.HexColor("#212529"),
+    )
+    patient_line_style = ParagraphStyle(
+        "PacienteLinha",
+        parent=styles["BodyText"],
+        fontSize=8,
+        leading=11,
+        textColor=colors.HexColor("#495057"),
+    )
+    patient_soft_style = ParagraphStyle(
+        "PacienteLinhaSecundaria",
+        parent=patient_line_style,
+        fontSize=7.6,
+        leading=10.4,
         textColor=colors.HexColor("#6c757d"),
-        alignment=1,
+    )
+    # Condição de saúde é o dado clínico do relatório: sai na cor da marca,
+    # com um respiro acima que a separa da identificação.
+    patient_condition_style = ParagraphStyle(
+        "PacienteCondicoes",
+        parent=patient_line_style,
+        textColor=colors.HexColor("#084298"),
+        spaceBefore=2.5,
     )
 
     total_pacientes = len(pacientes)
@@ -2594,7 +2688,7 @@ def exportar_pdf():
                 ),
             ]
         ],
-        colWidths=[11.4 * cm, 6.6 * cm],
+        colWidths=[largura - 6.6 * cm, 6.6 * cm],
     )
     header_table.setStyle(
         TableStyle(
@@ -2609,7 +2703,7 @@ def exportar_pdf():
         )
     )
     # Régua com acento: segmento curto na cor da marca + linha-fio no restante.
-    header_rule = Table([["", ""]], colWidths=[2.6 * cm, 15.4 * cm], rowHeights=[2])
+    header_rule = Table([["", ""]], colWidths=[2.6 * cm, largura - 2.6 * cm], rowHeights=[2])
     header_rule.setStyle(
         TableStyle(
             [
@@ -2649,10 +2743,10 @@ def exportar_pdf():
     report_image_path = os.path.join(BASE_DIR, "image", "image.jpg")
     if os.path.exists(report_image_path):
         # Imagem tratada como figura: moldura fina, legenda discreta abaixo.
-        region_image = pdf_image(report_image_path, 17.4 * cm, 4.8 * cm)
-        image_frame = Table(
-            [[region_image]], colWidths=[region_image.drawWidth + 0.2 * cm]
-        )
+        # A moldura acompanha a imagem: caixa larga com a foto boiando no meio
+        # é pior do que uma figura centrada e fechada.
+        region_image = pdf_image(report_image_path, largura - 6, 4.8 * cm)
+        image_frame = Table([[region_image]], colWidths=[region_image.drawWidth + 0.2 * cm])
         image_frame.setStyle(
             TableStyle(
                 [
@@ -2702,8 +2796,10 @@ def exportar_pdf():
         ],
     ]
 
-    summary_top_table = Table(summary_top, colWidths=[3.4 * cm, 3.4 * cm, 3.4 * cm, 3.4 * cm, 3.4 * cm])
-    summary_bottom_table = Table(summary_bottom, colWidths=[5.66 * cm, 5.66 * cm, 5.66 * cm])
+    # Toda tabela do relatório usa a mesma medida da régua do cabeçalho. Bloco
+    # que começa 5 mm para dentro do outro é ruído visual.
+    summary_top_table = Table(summary_top, colWidths=[largura / 5] * 5)
+    summary_bottom_table = Table(summary_bottom, colWidths=[largura / 3] * 3)
     summary_style = TableStyle(
         [
             ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cfe2ff")),
@@ -2730,7 +2826,23 @@ def exportar_pdf():
         ]
     )
 
-    comorbidity_rows = [[pdf_text("Condição", label_style), pdf_text("Total", label_style), pdf_text("Condição", label_style), pdf_text("Total", label_style)]]
+    # Cabeçalho de coluna: a cor vive no estilo do Paragraph. O comando
+    # TEXTCOLOR da TableStyle só pinta célula de texto puro — com Paragraph ele
+    # é ignorado em silêncio, e era isso que deixava o cabeçalho cinza sobre
+    # azul, quase ilegível.
+    table_head_style = ParagraphStyle(
+        "CabecalhoColuna",
+        parent=label_style,
+        textColor=colors.HexColor("#084298"),
+    )
+    comorbidity_rows = [
+        [
+            pdf_text("Condição", table_head_style),
+            pdf_text("Total", table_head_style),
+            pdf_text("Condição", table_head_style),
+            pdf_text("Total", table_head_style),
+        ]
+    ]
     selected_condition_labels = set(filtro_labels)
     selected_condition_cells = []
     selected_condition_style = ParagraphStyle(
@@ -2742,8 +2854,20 @@ def exportar_pdf():
     selected_count_style = ParagraphStyle(
         "TotalCondicaoSelecionada",
         parent=selected_condition_style,
-        alignment=1,
     )
+    # Zero é ruído numa tabela de 28 condições: fica em cinza claro para o
+    # olho encontrar de imediato o que de fato existe no território.
+    zero_style = ParagraphStyle(
+        "TotalZerado",
+        parent=normal_style,
+        textColor=colors.HexColor("#adb5bd"),
+    )
+
+    def estilo_total(total, selecionado):
+        if selecionado:
+            return selected_count_style
+        return zero_style if not total else normal_style
+
     comorbidades = stats["comorbidades"]
     for index in range(0, len(comorbidades), 2):
         left_name, left_total = comorbidades[index]
@@ -2761,16 +2885,24 @@ def exportar_pdf():
         comorbidity_rows.append(
             [
                 pdf_text(left_name, selected_condition_style if left_selected else normal_style),
-                pdf_count(left_total, selected_count_style if left_selected else normal_style),
+                pdf_count(left_total, estilo_total(left_total, left_selected)),
                 pdf_text(right_name, selected_condition_style if right_selected else normal_style),
-                pdf_count(right_total, selected_count_style if right_selected else normal_style) if right_name else pdf_text("", normal_style),
+                pdf_count(right_total, estilo_total(right_total, right_selected)) if right_name else pdf_text("", normal_style),
             ]
         )
 
-    comorbidity_table = Table(comorbidity_rows, repeatRows=1, colWidths=[7 * cm, 1.5 * cm, 7 * cm, 1.5 * cm])
+    largura_condicao = (largura - 3.2 * cm) / 2
+    comorbidity_table = Table(
+        comorbidity_rows,
+        repeatRows=1,
+        colWidths=[largura_condicao, 1.6 * cm, largura_condicao, 1.6 * cm],
+    )
+    # Mesma faixa clara do cabeçalho das casas — o documento inteiro fala uma
+    # língua só. (ALIGN de célula não move Paragraph: o alinhamento dos totais
+    # vive no estilo, não aqui.)
     comorbidity_style_commands = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d6efd")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e7f1ff")),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#b6d4fe")),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dee2e6")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8f9fa")]),
@@ -2778,8 +2910,6 @@ def exportar_pdf():
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
         ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("ALIGN", (1, 1), (1, -1), "CENTER"),
-        ("ALIGN", (3, 1), (3, -1), "CENTER"),
     ]
     for row_number, start_col, end_col in selected_condition_cells:
         comorbidity_style_commands.extend(
@@ -2796,121 +2926,142 @@ def exportar_pdf():
     # ganham seção própria — o relatório NUNCA omite gente do recorte.
     pacientes_sem_casa = pacientes_por_casa.get(None, [])
 
-    estilo_cabecalho_bloco = TableStyle(
-        [
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d6efd")),
-            ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#f1f6ff")),
-            ("SPAN", (0, 1), (1, 1)),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#b6d4fe")),
-            ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#084298")),
-            ("LEFTPADDING", (0, 0), (-1, -1), 8),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-            ("TOPPADDING", (0, 0), (-1, -1), 7),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ]
-    )
+    def montar_ficha_paciente(paciente):
+        """Um paciente = um registro em linha. Cada linha tem um papel: quem é,
+        como encontrar, de quem é filho, o que tem, o que o agente anotou.
+        Linha sem conteúdo não é impressa."""
+        linhas = []
 
-    def montar_cabecalho_bloco(titulo, subtitulo_html, total):
-        """Cabeçalho azul de um bloco de pacientes (casa ou 'sem casa')."""
-        tabela = Table(
+        idade = calcular_idade(paciente["data_nascimento"])
+        qualificadores = []
+        if idade is not None:
+            qualificadores.append("1 ano" if idade == 1 else f"{idade} anos")
+        sexo = str(paciente["sexo"] or "").strip()
+        if sexo:
+            qualificadores.append(sexo)
+        nome_html = xml_escape(paciente["nome"] or "Sem nome")
+        if qualificadores:
+            nome_html += (
+                '<font size="7.5" color="#6c757d">&#160;&#160;'
+                + " &#183; ".join(xml_escape(item) for item in qualificadores)
+                + "</font>"
+            )
+        linhas.append(Paragraph(nome_html, patient_name_style))
+
+        identificacao = pdf_linha_de_campos(
             [
-                [Paragraph(titulo, house_style), Paragraph(f"{total} paciente(s)", house_style)],
-                [Paragraph(subtitulo_html, normal_style), ""],
-            ],
-            colWidths=[13.0 * cm, 4.0 * cm],
+                pdf_campo("Nasc.", formatar_data_br(paciente["data_nascimento"])),
+                pdf_campo("CPF/CNS", formatar_cpf_ou_cns(paciente["cpf"])),
+                pdf_campo("Tel.", formatar_telefone(paciente["telefone"])),
+            ]
         )
-        tabela.setStyle(estilo_cabecalho_bloco)
-        return tabela
+        if identificacao:
+            linhas.append(Paragraph(identificacao, patient_line_style))
 
-    def montar_tabela_pacientes(lista_pacientes):
-        """Tabela de pacientes de um bloco. Retorna (tabela, nº de linhas) —
-        blocos curtos são mantidos juntos na paginação."""
+        filiacao = pdf_linha_de_campos(
+            [pdf_campo("Pai", paciente["nome_pai"]), pdf_campo("Mãe", paciente["nome_mae"])]
+        )
+        if filiacao:
+            linhas.append(Paragraph(filiacao, patient_soft_style))
+
+        condicoes = listar_condicoes(paciente["condicoes_saude"])
+        if condicoes:
+            linhas.append(
+                Paragraph(
+                    '<font color="#0b5ed7"><b>Condições</b></font>&#160;&#160;'
+                    + " &#183; ".join(xml_escape(condicao) for condicao in condicoes),
+                    patient_condition_style,
+                )
+            )
+
+        observacao = str(paciente["observacao"] or "").strip()
+        if observacao:
+            linhas.append(
+                Paragraph(
+                    f'<font color="{PDF_COR_ROTULO}">Observação</font>&#160;&#160;'
+                    + xml_escape(observacao),
+                    patient_soft_style,
+                )
+            )
+        return linhas
+
+    def montar_bloco_casa(titulo, subtitulo_html, lista_pacientes):
+        """Cabeçalho e pacientes na mesma tabela: quando a casa atravessa a
+        quebra de página, o `repeatRows` reimprime o cabeçalho — nunca aparece
+        uma lista de gente sem dizer de qual casa é."""
+        total = len(lista_pacientes)
+        if total == 0:
+            contagem = "Sem pacientes"
+        elif total == 1:
+            contagem = "1 paciente"
+        else:
+            contagem = f"{total} pacientes"
+
+        # Título e endereço dividem a mesma faixa: uma barra por casa, não
+        # duas. A contagem alinha pela linha de base do título (mesmo leading).
         dados = [
             [
-                pdf_text("Paciente", label_style),
-                pdf_text("CPF/CNS", label_style),
-                pdf_text("Nascimento", label_style),
-                pdf_text("Telefone", label_style),
-                pdf_text("Filiação", label_style),
+                [
+                    Paragraph(xml_escape(titulo), house_style),
+                    Paragraph(subtitulo_html, house_meta_style),
+                ],
+                Paragraph(contagem, house_count_style),
             ]
         ]
+        for paciente in lista_pacientes:
+            dados.append([montar_ficha_paciente(paciente), ""])
 
-        if lista_pacientes:
-            for paciente in lista_pacientes:
-                filiacao = (
-                    f"<b>Pai:</b> {xml_escape(paciente['nome_pai'] or '-')}<br/>"
-                    f"<b>Mãe:</b> {xml_escape(paciente['nome_mae'] or '-')}"
-                )
-                dados.append(
-                    [
-                        pdf_text(paciente["nome"], normal_style),
-                        pdf_text(formatar_cpf_ou_cns(paciente["cpf"]), normal_style),
-                        pdf_text(formatar_data_br(paciente["data_nascimento"]), normal_style),
-                        pdf_text(formatar_telefone(paciente["telefone"]), normal_style),
-                        Paragraph(filiacao, normal_style),
-                    ]
-                )
-                if paciente["observacao"]:
-                    dados.append(
-                        [
-                            Paragraph(f"<b>Observação:</b> {xml_escape(paciente['observacao'] or '')}", normal_style),
-                            "",
-                            "",
-                            "",
-                            "",
-                        ]
-                    )
-                condicoes = listar_condicoes(paciente["condicoes_saude"])
-                if condicoes:
-                    dados.append(
-                        [
-                            Paragraph(f"<b>Condições de saúde:</b> {', '.join(condicoes)}", normal_style),
-                            "",
-                            "",
-                            "",
-                            "",
-                        ]
-                    )
-        else:
-            dados.append([Paragraph("Nenhum paciente cadastrado", empty_style), "", "", "", ""])
+        tabela = Table(dados, repeatRows=1, colWidths=[largura - 4.6 * cm, 4.6 * cm])
+        comandos = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e7f1ff")),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.75, colors.HexColor("#b6d4fe")),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#dee2e6")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 9),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+            ("TOPPADDING", (0, 0), (-1, 0), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+            # Respiro de 7pt em cima e embaixo de cada ficha: o espaço é o que
+            # separa um paciente do outro, com um fio fino só para guiar o olho.
+            ("TOPPADDING", (0, 1), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 7),
+        ]
+        for indice in range(1, len(dados)):
+            comandos.append(("SPAN", (0, indice), (1, indice)))
+        if total > 1:
+            comandos.append(("LINEBELOW", (0, 1), (-1, -2), 0.4, colors.HexColor("#e9ecef")))
+        tabela.setStyle(TableStyle(comandos))
+        return tabela, total
 
-        tabela = Table(dados, repeatRows=1, colWidths=[3.6 * cm, 2.8 * cm, 2.2 * cm, 2.7 * cm, 5.7 * cm])
+    def montar_titulo_quadra(rotulo):
+        """Título de quadra com fio abaixo, na mesma medida de 18 cm das
+        tabelas — é o que separa um capítulo do território do outro."""
+        tabela = Table([[Paragraph(xml_escape(rotulo), block_style)]], colWidths=[largura])
         tabela.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e9ecef")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#212529")),
-                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#dee2e6")),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8f9fa")]),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#dee2e6")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                     ("TOPPADDING", (0, 0), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                 ]
             )
         )
-        for row_index, row in enumerate(dados):
-            if row_index > 0 and row[1:] == ["", "", "", ""]:
-                tabela.setStyle(
-                    TableStyle(
-                        [
-                            ("SPAN", (0, row_index), (-1, row_index)),
-                            ("BACKGROUND", (0, row_index), (-1, row_index), colors.HexColor("#f1f6ff")),
-                        ]
-                    )
-                )
-        return tabela, len(dados)
+        return tabela
 
-    def adicionar_bloco(intro_elements, cabecalho, tabela, linhas):
-        intro = intro_elements + [cabecalho, Spacer(1, 6)]
-        if linhas <= 8:
-            elements.append(KeepTogether(intro + [tabela, Spacer(1, 14)]))
+    def adicionar_bloco(intro_elements, tabela, total):
+        # Casa curta não se parte na quebra de página. Casa longa se parte
+        # sozinha — mas só começa se ainda couber o cabeçalho com um punhado
+        # de fichas; abrir uma casa no pé da página, para continuar na
+        # seguinte, é pior do que começar limpo na próxima.
+        if total <= 6:
+            elements.append(KeepTogether(intro_elements + [tabela, Spacer(1, 16)]))
         else:
-            elements.append(KeepTogether(intro))
+            elements.append(CondPageBreak(6 * cm))
+            elements.extend(intro_elements)
             elements.append(tabela)
-            elements.append(Spacer(1, 14))
+            elements.append(Spacer(1, 16))
 
     if not casas and not pacientes_sem_casa:
         if filtro_sem_selecao:
@@ -2938,7 +3089,8 @@ def exportar_pdf():
             casa_elements.append(Paragraph("Pacientes por quadra e casa", section_style))
 
         if quadra_label != quadra_atual:
-            casa_elements.append(Paragraph(quadra_label, block_style))
+            casa_elements.append(montar_titulo_quadra(quadra_label))
+            casa_elements.append(Spacer(1, 8))
             quadra_atual = quadra_label
 
         lista_pacientes = pacientes_por_casa.get(casa["id"], [])
@@ -2948,23 +3100,24 @@ def exportar_pdf():
         if tipo_casa != "domicilio":
             endereco_pdf += f" &nbsp;|&nbsp; <b>Tipo:</b> {xml_escape(tipo_imovel_label(tipo_casa))}"
 
-        cabecalho = montar_cabecalho_bloco(f"Casa Nº {casa['numero_casa']}", endereco_pdf, len(lista_pacientes))
-        tabela, linhas = montar_tabela_pacientes(lista_pacientes)
-        adicionar_bloco(casa_elements, cabecalho, tabela, linhas)
+        tabela, total = montar_bloco_casa(
+            f"Casa Nº {casa['numero_casa']}", endereco_pdf, lista_pacientes
+        )
+        adicionar_bloco(casa_elements, tabela, total)
         primeiro_bloco = False
 
     if pacientes_sem_casa:
         secao_elements = []
         if primeiro_bloco:
             secao_elements.append(Paragraph("Pacientes por quadra e casa", section_style))
-        secao_elements.append(Paragraph("Sem casa definida", block_style))
-        cabecalho = montar_cabecalho_bloco(
+        secao_elements.append(montar_titulo_quadra("Sem casa definida"))
+        secao_elements.append(Spacer(1, 8))
+        tabela, total = montar_bloco_casa(
             "Pacientes sem casa vinculada",
             "<b>Endereço:</b> ainda não definido no sistema — vincule pela página Pacientes",
-            len(pacientes_sem_casa),
+            pacientes_sem_casa,
         )
-        tabela, linhas = montar_tabela_pacientes(pacientes_sem_casa)
-        adicionar_bloco(secao_elements, cabecalho, tabela, linhas)
+        adicionar_bloco(secao_elements, tabela, total)
 
     doc.build(elements, onFirstPage=adicionar_cabecalho_rodape, onLaterPages=adicionar_cabecalho_rodape)
     buffer.seek(0)

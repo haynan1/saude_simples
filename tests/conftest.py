@@ -1,7 +1,9 @@
 import os
 import sys
+from io import BytesIO
 
 import pytest
+from pypdf import PdfReader
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -52,6 +54,16 @@ def logged_client(client):
     resp = client.post("/login", data={"senha": SENHA_TESTE})
     assert resp.status_code == 302
     return client
+
+
+def texto_pdf(data):
+    """Texto de todas as páginas do PDF, na ordem.
+
+    Extração de verdade (pypdf), não regex sobre os content streams: o decoder
+    caseiro perdia páginas em silêncio, e afirmação negativa sobre página que
+    não foi lida passa por acidente."""
+    leitor = PdfReader(BytesIO(data))
+    return "\n".join(pagina.extract_text() or "" for pagina in leitor.pages)
 
 
 def criar_quadra(client, numero="1"):

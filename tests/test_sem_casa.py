@@ -1,11 +1,7 @@
 """Pacientes sem casa vinculada (ex.: importados do e-SUS ainda não alocados).
 Nenhuma tela ou relatório pode quebrar com eles — nem omiti-los."""
-import base64
-import re
-import zlib
-
 import db
-from tests.conftest import criar_casa, criar_paciente
+from tests.conftest import criar_casa, criar_paciente, texto_pdf
 
 
 def _inserir_sem_casa(nome="Paciente Sem Casa", cpf="999.888.777-66"):
@@ -19,51 +15,32 @@ def _inserir_sem_casa(nome="Paciente Sem Casa", cpf="999.888.777-66"):
     conn.close()
 
 
-def _texto_pdf(data):
-    """Concatena os content streams do PDF (ASCII85 + Flate, o padrão do
-    reportlab) descomprimidos — suficiente para afirmar presença/ausência de
-    texto ASCII no documento."""
-    partes = []
-    for match in re.finditer(rb"stream\r?\n(.*?)endstream", data, re.S):
-        raw = match.group(1).strip()
-        if raw.endswith(b"~>"):
-            try:
-                raw = base64.a85decode(raw[:-2])
-            except ValueError:
-                continue
-        try:
-            partes.append(zlib.decompress(raw))
-        except zlib.error:
-            continue
-    return b"".join(partes)
-
-
 def test_pdf_geral_lista_pacientes_sem_casa(logged_client):
     """Regressão do relatório em branco: só pacientes sem casa no sistema —
     o PDF precisa listá-los na seção 'Sem casa definida'."""
     _inserir_sem_casa("PACIENTE INVISIVEL")
     resp = logged_client.get("/exportar/pdf")
     assert resp.status_code == 200
-    texto = _texto_pdf(resp.data)
-    assert b"PACIENTE INVISIVEL" in texto
-    assert b"Sem casa definida" in texto
+    texto = texto_pdf(resp.data)
+    assert "PACIENTE INVISIVEL" in texto
+    assert "Sem casa definida" in texto
 
 
 def test_pdf_filtrado_inclui_sem_casa(logged_client):
     _inserir_sem_casa("IDOSO SEM CASA")  # 1950 → idoso
     resp = logged_client.get("/exportar/pdf?filtrar=1&grupos=idosos")
     assert resp.status_code == 200
-    assert b"IDOSO SEM CASA" in _texto_pdf(resp.data)
+    assert "IDOSO SEM CASA" in texto_pdf(resp.data)
 
 
 def test_pdf_mistura_casas_e_sem_casa(logged_client):
     criar_casa(logged_client)
     criar_paciente(logged_client, nome="MORADOR DA CASA", cpf="11111111111")
     _inserir_sem_casa("AINDA SEM CASA")
-    texto = _texto_pdf(logged_client.get("/exportar/pdf").data)
-    assert b"MORADOR DA CASA" in texto
-    assert b"AINDA SEM CASA" in texto
-    assert b"Sem casa definida" in texto
+    texto = texto_pdf(logged_client.get("/exportar/pdf").data)
+    assert "MORADOR DA CASA" in texto
+    assert "AINDA SEM CASA" in texto
+    assert "Sem casa definida" in texto
 
 
 def test_editar_paciente_sem_casa_funciona(logged_client):
@@ -111,4 +88,4 @@ def test_status_e_obito_de_paciente_sem_casa(logged_client):
     # Fora das contagens; PDF geral continua válido.
     resp = logged_client.get("/exportar/pdf")
     assert resp.status_code == 200
-    assert b"Paciente Sem Casa" not in _texto_pdf(resp.data)
+    assert "Paciente Sem Casa" not in texto_pdf(resp.data)

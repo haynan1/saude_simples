@@ -35,7 +35,7 @@ def test_recorte_criancas_0_a_2_separado(logged_client):
     o bebê entra nos dois; a criança de mais idade só no grupo amplo."""
     from datetime import datetime
 
-    from tests.test_sem_casa import _texto_pdf
+    from tests.conftest import texto_pdf
 
     criar_casa(logged_client)
     criar_paciente(
@@ -51,11 +51,11 @@ def test_recorte_criancas_0_a_2_separado(logged_client):
     amplo = logged_client.get("/exportar/preview?grupos=criancas").get_json()
     assert amplo["stats"]["total_pacientes"] == 2
     # O PDF do recorte lista o nome — é assim que se sabe QUEM compõe o número.
-    texto = _texto_pdf(
+    texto = texto_pdf(
         logged_client.get("/exportar/pdf?filtrar=1&grupos=criancas_0_2").data
     )
-    assert b"Bebe Do Territorio" in texto
-    assert b"Crianca De Sete Anos" not in texto
+    assert "Bebe Do Territorio" in texto
+    assert "Crianca De Sete Anos" not in texto
 
 
 def test_uniao_de_grupos(logged_client):

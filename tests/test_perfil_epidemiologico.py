@@ -8,8 +8,7 @@ import json
 from datetime import datetime
 
 import db
-from tests.conftest import criar_casa, criar_paciente, criar_quadra
-from tests.test_sem_casa import _texto_pdf
+from tests.conftest import criar_casa, criar_paciente, criar_quadra, texto_pdf
 
 
 def _ano_mes_atual():
@@ -67,11 +66,11 @@ def test_exportacao_gera_pdf_com_mes_corrente(logged_client):
     resp = logged_client.get("/exportar/perfil-epidemiologico")
     assert resp.status_code == 200
     assert resp.mimetype == "application/pdf"
-    texto = _texto_pdf(resp.data)
-    assert b"Perfil Epidemiol" in texto
-    assert b"Tabagistas" in texto
+    texto = texto_pdf(resp.data)
+    assert "Perfil Epidemiol" in texto
+    assert "Tabagistas" in texto
     # Meses sem retrato registrado aparecem como tracinhos.
-    assert b"-----" in texto
+    assert "-----" in texto
 
 
 def test_exportacao_persiste_retrato_do_mes(logged_client):
@@ -103,12 +102,12 @@ def test_historico_congelado_entra_no_documento(logged_client):
         mes_anterior,
         json.dumps({"familias": 87, "pessoas": {"f": 43, "m": 44}}),
     )
-    texto = _texto_pdf(logged_client.get("/exportar/perfil-epidemiologico").data)
-    assert b"87" in texto
-    assert b"43" in texto
+    texto = texto_pdf(logged_client.get("/exportar/perfil-epidemiologico").data)
+    assert "87" in texto
+    assert "43" in texto
     # Indicador ausente no retrato antigo (esquema evoluiu): vira "-----",
     # nunca zero inventado.
-    assert b"-----" in texto
+    assert "-----" in texto
 
 
 def test_serie_nasce_no_primeiro_mes_alimentado(logged_client):
@@ -117,10 +116,10 @@ def test_serie_nasce_no_primeiro_mes_alimentado(logged_client):
     import app as app_module
 
     _seed_territorio(logged_client)
-    texto = _texto_pdf(logged_client.get("/exportar/perfil-epidemiologico").data)
+    texto = texto_pdf(logged_client.get("/exportar/perfil-epidemiologico").data)
     atual = _ano_mes_atual()
-    assert app_module.rotulo_mes(atual).encode() in texto
-    assert app_module.rotulo_mes(_mes_anterior(atual)).encode() not in texto
+    assert app_module.rotulo_mes(atual) in texto
+    assert app_module.rotulo_mes(_mes_anterior(atual)) not in texto
 
 
 def test_serie_cresce_a_partir_da_ancora(logged_client):
@@ -134,11 +133,11 @@ def test_serie_cresce_a_partir_da_ancora(logged_client):
     ancora = _mes_anterior(atual, 3)
     db.salvar_perfil_mensal(ancora, json.dumps({"familias": 87}))
 
-    texto = _texto_pdf(logged_client.get("/exportar/perfil-epidemiologico").data)
+    texto = texto_pdf(logged_client.get("/exportar/perfil-epidemiologico").data)
     for quantos in range(4):  # âncora, os 2 meses herdados e o mês corrente
-        assert app_module.rotulo_mes(_mes_anterior(atual, quantos)).encode() in texto
-    assert app_module.rotulo_mes(_mes_anterior(atual, 4)).encode() not in texto
-    assert b"-----" in texto  # indicadores ausentes no retrato da âncora
+        assert app_module.rotulo_mes(_mes_anterior(atual, quantos)) in texto
+    assert app_module.rotulo_mes(_mes_anterior(atual, 4)) not in texto
+    assert "-----" in texto  # indicadores ausentes no retrato da âncora
 
 
 def _retrato_completo(familias):
@@ -169,11 +168,11 @@ def test_mes_sem_uso_herda_o_retrato_anterior(logged_client):
     # O mês sem registro herda o retrato da âncora, valor a valor.
     assert perfis[_mes_anterior(atual, 1)] == perfis[ancora]
 
-    texto = _texto_pdf(logged_client.get("/exportar/perfil-epidemiologico").data)
-    assert b"87" in texto
+    texto = texto_pdf(logged_client.get("/exportar/perfil-epidemiologico").data)
+    assert "87" in texto
     # Série contínua e completa: nenhum tracinho na TABELA — documento
     # entregável. (A única ocorrência de "-----" é a citação da legenda.)
-    assert texto.count(b"-----") == 1
+    assert texto.count("-----") == 1
 
 
 def test_meses_da_serie_atravessa_virada_de_ano(logged_client):
@@ -206,8 +205,8 @@ def test_post_salva_identificacao_do_acs(logged_client):
     assert db.get_preferencia("acs_nome") == "Maria da Silva"
     assert db.get_preferencia("acs_microarea") == "13"
     # O cabeçalho do documento carrega a identificação salva.
-    texto = _texto_pdf(logged_client.get("/exportar/perfil-epidemiologico").data)
-    assert b"Maria da Silva" in texto
+    texto = texto_pdf(logged_client.get("/exportar/perfil-epidemiologico").data)
+    assert "Maria da Silva" in texto
     # E a página Exportar reapresenta os valores salvos.
     pagina = logged_client.get("/exportar")
     assert b"Maria da Silva" in pagina.data
@@ -266,15 +265,15 @@ def test_pdf_janela_de_12_meses_e_xlsx_integral(logged_client):
     ancora = _mes_anterior(atual, 13)
     db.salvar_perfil_mensal(ancora, json.dumps(_retrato_completo(87)))
 
-    pdf = _texto_pdf(logged_client.get("/exportar/perfil-epidemiologico").data)
+    pdf = texto_pdf(logged_client.get("/exportar/perfil-epidemiologico").data)
     for quantos in range(12):  # do mês corrente até 11 atrás: dentro do PDF
-        assert app_module.rotulo_mes(_mes_anterior(atual, quantos)).encode() in pdf
-    assert app_module.rotulo_mes(_mes_anterior(atual, 12)).encode() not in pdf
-    assert app_module.rotulo_mes(ancora).encode() not in pdf
+        assert app_module.rotulo_mes(_mes_anterior(atual, quantos)) in pdf
+    assert app_module.rotulo_mes(_mes_anterior(atual, 12)) not in pdf
+    assert app_module.rotulo_mes(ancora) not in pdf
     # Herança atravessou a borda: valores da âncora presentes, tabela sem
     # tracinho (a única ocorrência de "-----" é a citação da legenda).
-    assert b"87" in pdf
-    assert pdf.count(b"-----") == 1
+    assert "87" in pdf
+    assert pdf.count("-----") == 1
 
     resp = logged_client.get("/exportar/perfil-epidemiologico.xlsx")
     ws = load_workbook(BytesIO(resp.data)).active
