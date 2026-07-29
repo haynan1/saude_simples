@@ -72,26 +72,36 @@
       <table class="w-full text-sm">
         <thead>
           <tr class="bg-slate-50 text-left">
-            <th class="px-4 py-3 font-semibold text-slate-600">Nome</th>
-            <th class="px-4 py-3 font-semibold text-slate-600">CPF/CNS</th>
-            <th class="px-4 py-3 font-semibold text-slate-600">Nascimento</th>
-            <th class="px-4 py-3 font-semibold text-slate-600">Telefone</th>
-            <th class="px-4 py-3 font-semibold text-slate-600">Nome do pai</th>
-            <th class="px-4 py-3 font-semibold text-slate-600">Nome da mãe</th>
-            <th class="px-4 py-3 font-semibold text-slate-600 text-right">Ações</th>
+            <th class="px-3 py-3 font-semibold text-slate-600">Nome</th>
+            <th class="px-3 py-3 font-semibold text-slate-600">CPF/CNS</th>
+            <th class="px-3 py-3 font-semibold text-slate-600">Nascimento</th>
+            <th class="px-3 py-3 font-semibold text-slate-600">Telefone</th>
+            <th class="px-3 py-3 font-semibold text-slate-600">Situação</th>
+            <th class="px-3 py-3 font-semibold text-slate-600 text-right">Ações</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
           {% for paciente in pacientes %}
             <tr class="table-row hover:bg-slate-50">
-              <td class="px-4 py-3 font-semibold text-slate-900">{{ paciente.nome }}</td>
-              <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ paciente.cpf|cpf_cns }}</td>
-              <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ paciente.data_nascimento|data_br }}</td>
-              <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ paciente.telefone|telefone }}</td>
-              {# `or ''`: filiação nula (banco importado de fora) imprimia "None" na tabela. #}
-              <td class="px-4 py-3 text-slate-600">{{ paciente.nome_pai or '' }}</td>
-              <td class="px-4 py-3 text-slate-600">{{ paciente.nome_mae or '' }}</td>
-              <td class="px-4 py-3">
+              <td class="px-3 py-3 font-semibold text-slate-900">{{ paciente.nome }}</td>
+              <td class="px-3 py-3 whitespace-nowrap text-slate-600">{{ paciente.cpf|cpf_cns }}</td>
+              <td class="px-3 py-3 whitespace-nowrap text-slate-600">{{ paciente.data_nascimento|data_br }}</td>
+              <td class="px-3 py-3 whitespace-nowrap text-slate-600">{{ paciente.telefone|telefone }}</td>
+              <td class="px-3 py-3 whitespace-nowrap">
+                {# Mesmo menu da página Pacientes: mudou a situação, a linha sai
+                   da tabela e reaparece em "Registros guardados", logo abaixo. #}
+                <form method="post" action="{{ url_for('alterar_status_paciente', paciente_id=paciente.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="next" value="{{ request.path }}">
+                  <select class="status-select status-select--ativo" name="status" data-submit-on-change
+                          aria-label="Situação de {{ paciente.nome }}" title="Mudar a situação de {{ paciente.nome }}">
+                    {% for opcao in opcoes_status_paciente %}
+                      <option value="{{ opcao.codigo }}" {% if opcao.codigo == 'ativo' %}selected{% endif %}>{{ opcao.label }}</option>
+                    {% endfor %}
+                  </select>
+                </form>
+              </td>
+              <td class="px-3 py-3">
                 <div class="flex items-center justify-end gap-1.5" role="group" aria-label="Ações do paciente {{ paciente.nome }}">
                   {% if paciente.telefone %}
                     <a
@@ -159,10 +169,19 @@
                 </div>
               </td>
             </tr>
+            {# Filiação desceu para a linha de baixo junto com observação e
+               condições: são dados de conferência, não de varredura. Em coluna,
+               empurravam as ações para fora da tela em telas de notebook. #}
             {% set condicoes = paciente.condicoes_saude|condicoes_lista %}
-            {% if paciente.observacao or condicoes %}
+            {% set filiacao = [] %}
+            {% if paciente.nome_pai %}{% set _ = filiacao.append('Pai: ' ~ paciente.nome_pai) %}{% endif %}
+            {% if paciente.nome_mae %}{% set _ = filiacao.append('Mãe: ' ~ paciente.nome_mae) %}{% endif %}
+            {% if filiacao or paciente.observacao or condicoes %}
               <tr>
-                <td colspan="7" class="px-4 pb-3 pt-0 bg-slate-50">
+                <td colspan="6" class="px-3 pb-3 pt-0 bg-slate-50">
+                  {% if filiacao %}
+                    <p class="text-xs text-slate-600 pt-2">{{ filiacao|join(' · ') }}</p>
+                  {% endif %}
                   {% if paciente.observacao %}
                     <p class="text-xs text-slate-600 pt-2"><span class="font-bold text-slate-700">Obs:</span> {{ paciente.observacao }}</p>
                   {% endif %}
@@ -234,6 +253,38 @@
         </div>
       {% endfor %}
     </div>
+  </section>
+{% endif %}
+
+{% if pacientes or pacientes_inativos %}
+  <!-- Situação da família: a casa inteira muda de estado de uma vez -->
+  <section class="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+    <div class="mb-4">
+      <h2 class="text-sm font-bold text-slate-900">Situação da família</h2>
+      <p class="text-xs text-slate-500">
+        Aplica a mesma situação a todos os moradores desta casa de uma vez — a família que se mudou
+        ou saiu da área sai das contagens junta, com os cadastros guardados aqui. Óbito continua
+        sendo registrado pessoa a pessoa, na página Pacientes.
+      </p>
+    </div>
+    <form
+      method="post"
+      action="{{ url_for('alterar_status_familia', casa_id=casa.id) }}"
+      data-confirm="A situação escolhida vale para todos os moradores desta casa. Quem está marcado como óbito não é alterado, e nada é apagado — dá para voltar atrás."
+      data-confirm-title="Aplicar a todos os moradores da casa {{ casa.numero_casa }}?"
+      data-confirm-label="Sim, aplicar"
+    >
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label" for="status-familia">Nova situação dos moradores</label>
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <select class="form-input flex-1" id="status-familia" name="status">
+          <option value="mudou_se">Mudou-se — a família saiu deste endereço</option>
+          <option value="fora_de_area">Fora de Área — não é mais do território</option>
+          <option value="ativo">Ativo — a família voltou</option>
+        </select>
+        <button class="btn-secondary" type="submit">Aplicar a todos</button>
+      </div>
+    </form>
   </section>
 {% endif %}
 

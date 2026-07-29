@@ -186,7 +186,7 @@ def test_vazias_conta_apenas_imoveis_residenciais(logged_client):
 
 
 # ---------------------------------------------------------------------------
-# Filtro de casas (tipo de imóvel + quadra)
+# Filtro de casas (tipo de imóvel + ocupação + quadra)
 # ---------------------------------------------------------------------------
 def _montar_territorio_para_filtro(logged_client):
     criar_quadra(logged_client, "1")
@@ -252,6 +252,112 @@ def test_filtro_sem_resultado(logged_client):
     _montar_territorio_para_filtro(logged_client)
     body = logged_client.get("/?tipo=escola").get_data(as_text=True)
     assert "Nenhuma casa corresponde ao filtro" in body
+
+
+def _territorio_com_ocupacao(logged_client):
+    """Casa 1: com morador. Casa 2: domicílio vazio. Casa 3: loja sem morador
+    (não é "vazia" — imóvel não residencial sem morador é o esperado)."""
+    criar_casa(logged_client, endereco="Casa Com Morador", numero="1")
+    criar_casa(logged_client, endereco="Casa Vazia", numero="2")
+    logged_client.post(
+        "/casa/nova",
+        data={"endereco": "Loja Sem Morador", "numero_casa": "3", "quadra_id": "",
+              "tipo_imovel": "loja"},
+    )
+    criar_paciente(logged_client, casa_id=1, nome="Moradora Presente")
+
+
+def test_filtro_com_moradores(logged_client):
+    _territorio_com_ocupacao(logged_client)
+    body = logged_client.get("/?ocupacao=com_moradores").get_data(as_text=True)
+    assert "Casa Com Morador" in body
+    assert "Casa Vazia" not in body
+    assert "Loja Sem Morador" not in body
+
+
+def test_filtro_vazias_segue_a_regra_do_indicador(logged_client):
+    """O filtro tem que devolver exatamente as casas que o card conta como
+    vazias — inclusive não chamando de vazia a loja sem morador."""
+    _territorio_com_ocupacao(logged_client)
+    body = logged_client.get("/?ocupacao=vazias").get_data(as_text=True)
+    assert "Casa Vazia" in body
+    assert "Casa Com Morador" not in body
+    assert "Loja Sem Morador" not in body
+    assert "1 de 3 — filtro ativo" in body
+
+    painel = logged_client.get("/").get_data(as_text=True)
+    assert "1 vazia(s)" in painel  # mesmo número do indicador
+
+
+def test_filtro_de_ocupacao_ignora_imovel_inativo(logged_client):
+    """Inativo não é vazio nem cheio: está fora da conta, e os dois recortes
+    falam sobre o que conta."""
+    _territorio_com_ocupacao(logged_client)
+    logged_client.post("/casa/1/situacao", data={"status": "inativa"})
+    logged_client.post("/casa/2/situacao", data={"status": "inativa"})
+
+    com_moradores = logged_client.get("/?ocupacao=com_moradores").get_data(as_text=True)
+    assert "Casa Com Morador" not in com_moradores
+
+    vazias = logged_client.get("/?ocupacao=vazias").get_data(as_text=True)
+    assert "Casa Vazia" not in vazias
+
+
+def test_filtro_de_ocupacao_combina_com_tipo_e_quadra(logged_client):
+    _territorio_com_ocupacao(logged_client)
+    body = logged_client.get("/?ocupacao=vazias&tipo=loja").get_data(as_text=True)
+    assert "Nenhuma casa corresponde ao filtro" in body
+
+
+def test_ocupacao_invalida_ignorada(logged_client):
+    _territorio_com_ocupacao(logged_client)
+    body = logged_client.get("/?ocupacao=assombrada").get_data(as_text=True)
+    assert "3 cadastrada(s)" in body
+    assert "filtro ativo" not in body
+
+
+def test_contagens_de_ocupacao_no_modal(logged_client):
+    _territorio_com_ocupacao(logged_client)
+    body = logged_client.get("/").get_data(as_text=True)
+    assert "Com moradores — entram na contagem (1)" in body
+    assert "Vazias — domicílio sem morador (1)" in body
+
+
+def test_ocupacao_sobrevive_a_troca_de_ordem(logged_client):
+    """Inverter a ordenação não pode derrubar o recorte ativo."""
+    _territorio_com_ocupacao(logged_client)
+    body = logged_client.get("/?ocupacao=vazias").get_data(as_text=True)
+    assert "ocupacao=vazias" in body  # o link de ordem carrega o filtro junto
+
+
+def test_casa_esvaziada_por_saida_de_morador_migra_de_recorte(logged_client):
+    """Quem se muda ou vem a óbito sai da contagem da casa — e a casa passa a
+    ser vazia nos dois lugares ao mesmo tempo, filtro e indicador."""
+    _territorio_com_ocupacao(logged_client)
+    logged_client.post("/paciente/1/status", data={"status": "mudou_se"})
+
+    assert "Casa Com Morador" not in logged_client.get(
+        "/?ocupacao=com_moradores"
+    ).get_data(as_text=True)
+    assert "Casa Com Morador" in logged_client.get("/?ocupacao=vazias").get_data(as_text=True)
+    assert "2 vazia(s)" in logged_client.get("/").get_data(as_text=True)
+
+
+def test_filtro_de_ocupacao_convive_com_a_busca(logged_client):
+    """O modal é submetido com a busca ativa: o recorte não pode apagá-la."""
+    _territorio_com_ocupacao(logged_client)
+    body = logged_client.get("/?busca=Moradora&ocupacao=com_moradores").get_data(as_text=True)
+    assert "Moradora Presente" in body       # resultado da busca segue na tela
+    assert "Casa Com Morador" in body        # e a lista respeita o recorte
+    assert "Casa Vazia" not in body
+
+
+def test_selects_do_filtro_tem_rotulo_acessivel(logged_client):
+    """Controle sem nome acessível é invisível para leitor de tela."""
+    _territorio_com_ocupacao(logged_client)
+    body = logged_client.get("/").get_data(as_text=True)
+    assert 'for="filtro-ocupacao"' in body and 'id="filtro-ocupacao"' in body
+    assert 'for="filtro-quadra"' in body and 'id="filtro-quadra"' in body
 
 
 def test_numeracao_automatica_por_quadra(logged_client):

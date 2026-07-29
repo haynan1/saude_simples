@@ -393,6 +393,41 @@ def casa_esta_ativa(casa):
     return status_casa_de(casa) == "ativa"
 
 
+# Ocupação do imóvel. Os predicados abaixo são a régua única: o indicador do
+# painel conta por eles e o filtro da lista recorta por eles. Escrita a regra em
+# dois lugares, o número do card e o resultado do filtro divergiriam no primeiro
+# ajuste — e o operador não teria como saber qual dos dois está certo.
+#
+# Exigem `total_pacientes` na linha (as consultas do painel e do relatório
+# trazem esse total já contando só morador ativo).
+def casa_tem_moradores(casa):
+    """Imóvel acompanhado com pelo menos um morador ativo — é ele que leva
+    gente para a contagem do território."""
+    return casa_esta_ativa(casa) and casa["total_pacientes"] > 0
+
+
+def casa_esta_vazia(casa):
+    """Domicílio acompanhado, sem nenhum morador ativo.
+
+    Vazia é achado de campo, e só vale para imóvel residencial: loja, escola ou
+    terreno baldio sem morador é o esperado, não um alerta. Imóvel inativo não é
+    vazio nem cheio — está fora da conta, e some do indicador junto com os
+    moradores."""
+    return (
+        casa_esta_ativa(casa)
+        and casa["total_pacientes"] == 0
+        and tipo_imovel_de(casa) in TIPOS_IMOVEL_RESIDENCIAIS
+    )
+
+
+# Recortes de ocupação oferecidos no filtro do painel. O rótulo vive no
+# template; aqui mora só o predicado.
+OCUPACAO_FILTROS = {
+    "com_moradores": casa_tem_moradores,
+    "vazias": casa_esta_vazia,
+}
+
+
 def localizacao_de(casa):
     """Link do mapa pronto para virar href — na tela e no PDF.
 
@@ -813,13 +848,7 @@ def build_dashboard_stats(casas, pacientes):
     """
     casas = [casa for casa in casas if casa_esta_ativa(casa)]
     total_casas = len(casas)
-    # "Vazia" é um achado de campo apenas para imóvel residencial — loja,
-    # escola ou terreno baldio sem morador é o esperado, não um alerta.
-    casas_vazias = sum(
-        1
-        for casa in casas
-        if casa["total_pacientes"] == 0 and tipo_imovel_de(casa) in TIPOS_IMOVEL_RESIDENCIAIS
-    )
+    casas_vazias = sum(1 for casa in casas if casa_esta_vazia(casa))
     total_pacientes = len(pacientes)
     # Mesmos predicados dos recortes de exportação — uma única régua.
     criancas = sum(1 for paciente in pacientes if paciente_e_crianca(paciente))
@@ -1427,15 +1456,19 @@ def index():
     # a lista de casas.
     stats = build_dashboard_stats(casas, pacientes)
 
-    # Filtro de casas: por tipo de imóvel (multi) e/ou por quadra.
+    # Filtro de casas: por tipo de imóvel (multi), por ocupação e/ou por quadra.
     tipos_filtro = [
         tipo for tipo in request.args.getlist("tipo") if tipo in TIPOS_IMOVEL_POR_CODIGO
     ]
+    ocupacao_filtro = request.args.get("ocupacao", "").strip()
+    if ocupacao_filtro not in OCUPACAO_FILTROS:
+        ocupacao_filtro = ""
     quadra_filtro = request.args.get("quadra", "").strip()
 
     # Contagens exibidas no modal — calculadas ANTES do recorte, para o
     # operador saber quantos imóveis existem de cada tipo/quadra.
     contagem_tipos = {opcao["codigo"]: 0 for opcao in TIPOS_IMOVEL_OPCOES}
+    contagem_ocupacao = {codigo: 0 for codigo in OCUPACAO_FILTROS}
     sem_quadra_total = 0
     # A lista mostra o território inteiro, inclusive o que não é acompanhado —
     # é por ela que se reativa um imóvel. Quem some é o número no indicador.
@@ -1446,12 +1479,18 @@ def index():
             sem_quadra_total += 1
         if not casa_esta_ativa(casa):
             casas_inativas += 1
+        for codigo, corresponde in OCUPACAO_FILTROS.items():
+            if corresponde(casa):
+                contagem_ocupacao[codigo] += 1
 
     total_casas_geral = len(casas)
     casas_filtradas = casas
     if tipos_filtro:
         tipos_ativos = set(tipos_filtro)
         casas_filtradas = [casa for casa in casas_filtradas if tipo_imovel_de(casa) in tipos_ativos]
+    if ocupacao_filtro:
+        corresponde_ocupacao = OCUPACAO_FILTROS[ocupacao_filtro]
+        casas_filtradas = [casa for casa in casas_filtradas if corresponde_ocupacao(casa)]
     if quadra_filtro == "0":
         casas_filtradas = [casa for casa in casas_filtradas if casa["quadra_id"] is None]
     elif quadra_filtro.isdigit():
@@ -1468,12 +1507,14 @@ def index():
         ordem=ordem,
         pacientes_busca=pacientes_busca,
         tipos_filtro=tipos_filtro,
+        ocupacao_filtro=ocupacao_filtro,
         quadra_filtro=quadra_filtro,
         contagem_tipos=contagem_tipos,
+        contagem_ocupacao=contagem_ocupacao,
         sem_quadra_total=sem_quadra_total,
         total_casas_geral=total_casas_geral,
         casas_inativas=casas_inativas,
-        filtro_ativo=bool(tipos_filtro or quadra_filtro),
+        filtro_ativo=bool(tipos_filtro or ocupacao_filtro or quadra_filtro),
     )
 
 
@@ -2427,6 +2468,70 @@ def transferir_familia(casa_id):
         "success",
     )
     return redirect(url_for("detalhes_casa", casa_id=casa_destino_id))
+
+
+# A família inteira muda de situação junto — mas óbito não. Marcar uma casa
+# inteira como falecida com um clique é o tipo de engano que não se desfaz por
+# memória: quem morreu é registrado pessoa a pessoa, na lista de Pacientes.
+STATUS_FAMILIA_VALIDOS = ("ativo", "mudou_se", "fora_de_area")
+
+
+@app.route("/casa/<int:casa_id>/status-familia", methods=["POST"])
+@login_required
+def alterar_status_familia(casa_id):
+    """Aplica uma situação a todos os moradores da casa de uma vez: a família
+    que se mudou, saiu da área — ou voltou."""
+    casa = get_house_or_404(casa_id)
+    if casa is None:
+        return redirect(url_for("index"))
+
+    destino = url_for("detalhes_casa", casa_id=casa_id)
+    status = request.form.get("status", "").strip()
+    if status not in STATUS_FAMILIA_VALIDOS:
+        flash("Escolha a situação a aplicar aos moradores.", "danger")
+        return redirect(destino)
+
+    # Mutação em lote: backup antes, como na transferência da família e no
+    # status em massa da lista de pacientes.
+    try:
+        criar_backup("antes_status_familia")
+    except (sqlite3.Error, OSError) as exc:
+        logger.error("Falha ao criar backup antes de mudar a família da casa %s: %s", casa_id, exc)
+        flash("Não foi possível criar backup de segurança. Alteração cancelada.", "danger")
+        return redirect(destino)
+
+    conn = get_db_connection()
+    # Quem já está no estado alvo fica de fora para a contagem do aviso dizer o
+    # que de fato mudou; óbito nunca é tocado, em nenhuma das direções.
+    cursor = conn.execute(
+        "UPDATE pacientes SET status = ?"
+        " WHERE casa_id = ? AND COALESCE(status, 'ativo') NOT IN ('obito', ?)",
+        (status, casa_id, status),
+    )
+    alterados = cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    if alterados == 0:
+        flash("Nenhum morador desta casa precisava dessa mudança.", "info")
+        return redirect(destino)
+
+    logger.info(
+        "Situação da família da casa %s: %s morador(es) → %s, a partir de %s",
+        casa_id,
+        alterados,
+        status,
+        request.remote_addr,
+    )
+    if status == "ativo":
+        flash(f"{alterados} morador(es) voltaram a contar nesta casa.", "success")
+    else:
+        flash(
+            f"{alterados} morador(es) marcados como “{status_paciente_label(status)}”. "
+            "Os cadastros ficam guardados na casa, fora das contagens.",
+            "success",
+        )
+    return redirect(destino)
 
 
 # ---------------------------------------------------------------------------

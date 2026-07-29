@@ -446,6 +446,133 @@ def test_transferir_familia_para_mesma_casa_rejeitado(logged_client):
 
 
 # ---------------------------------------------------------------------------
+# Situação da família inteira (pelo painel da casa)
+# ---------------------------------------------------------------------------
+def _familia(logged_client):
+    """Três moradores na casa 1; a avó já consta como óbito."""
+    criar_casa(logged_client)
+    criar_paciente(logged_client, nome="Pai Da Casa", cpf="11111111111")
+    criar_paciente(logged_client, nome="Filha Da Casa", cpf="22222222222")
+    criar_paciente(logged_client, nome="Avó Falecida", cpf="33333333333")
+    logged_client.post("/paciente/3/status", data={"status": "obito"})
+
+
+def _situacoes():
+    conn = db.get_db_connection()
+    linhas = conn.execute("SELECT nome, status, casa_id FROM pacientes").fetchall()
+    conn.close()
+    return {linha["nome"]: linha["status"] for linha in linhas}
+
+
+def test_familia_inteira_marcada_como_mudou_se(logged_client):
+    _familia(logged_client)
+    resp = logged_client.post("/casa/1/status-familia", data={"status": "mudou_se"})
+    assert resp.status_code == 302
+
+    situacoes = _situacoes()
+    assert situacoes["Pai Da Casa"] == "mudou_se"
+    assert situacoes["Filha Da Casa"] == "mudou_se"
+
+
+def test_obito_nunca_e_alterado_pela_acao_da_familia(logged_client):
+    """Marcar a casa inteira não pode reescrever quem já foi registrado como
+    óbito — nem para fora de área, nem de volta para ativo."""
+    _familia(logged_client)
+    logged_client.post("/casa/1/status-familia", data={"status": "fora_de_area"})
+    assert _situacoes()["Avó Falecida"] == "obito"
+
+    logged_client.post("/casa/1/status-familia", data={"status": "ativo"})
+    assert _situacoes()["Avó Falecida"] == "obito"
+
+
+def test_familia_sai_das_contagens_e_fica_guardada_na_casa(logged_client):
+    _familia(logged_client)
+    logged_client.post("/casa/1/status-familia", data={"status": "fora_de_area"})
+
+    painel = logged_client.get("/").get_data(as_text=True)
+    assert ">0</p>" in painel  # nenhum paciente ativo no território
+
+    casa = logged_client.get("/casa/1").get_data(as_text=True)
+    assert "Pai Da Casa" in casa           # cadastro continua na casa
+    assert "Registros guardados" in casa
+
+
+def test_familia_volta_a_ativa(logged_client):
+    _familia(logged_client)
+    logged_client.post("/casa/1/status-familia", data={"status": "mudou_se"})
+    logged_client.post("/casa/1/status-familia", data={"status": "ativo"})
+
+    situacoes = _situacoes()
+    assert situacoes["Pai Da Casa"] == "ativo"
+    assert situacoes["Filha Da Casa"] == "ativo"
+    assert situacoes["Avó Falecida"] == "obito"
+
+
+def test_status_de_familia_invalido_rejeitado(logged_client):
+    """Óbito em massa não passa: a lista de válidos é fechada."""
+    _familia(logged_client)
+    for invalido in ("obito", "sumiu", ""):
+        logged_client.post("/casa/1/status-familia", data={"status": invalido})
+    situacoes = _situacoes()
+    assert situacoes["Pai Da Casa"] == "ativo"
+    assert situacoes["Filha Da Casa"] == "ativo"
+
+
+def test_status_de_familia_em_casa_inexistente(logged_client):
+    resp = logged_client.post("/casa/99/status-familia", data={"status": "mudou_se"})
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/")
+
+
+def test_status_de_familia_nao_atinge_outras_casas(logged_client):
+    _familia(logged_client)
+    criar_casa(logged_client, endereco="Rua B, 2", numero="2")
+    criar_paciente(logged_client, casa_id=2, nome="Vizinho Intacto", cpf="44444444444")
+
+    logged_client.post("/casa/1/status-familia", data={"status": "mudou_se"})
+    assert _situacoes()["Vizinho Intacto"] == "ativo"
+
+
+def test_acao_da_familia_gera_backup_antes(logged_client):
+    """Mutação em lote: o estado anterior fica salvo antes de qualquer UPDATE."""
+    _familia(logged_client)
+    antes = len(db.listar_backups())
+    logged_client.post("/casa/1/status-familia", data={"status": "mudou_se"})
+    assert len(db.listar_backups()) == antes + 1
+
+
+def test_casa_sem_morador_nao_mostra_o_controle_da_familia(logged_client):
+    criar_casa(logged_client)
+    corpo = logged_client.get("/casa/1").get_data(as_text=True)
+    assert "Situação da família" not in corpo
+
+
+def test_situacao_individual_pelo_painel_da_casa(logged_client):
+    """A coluna Situação resolve o caso de um morador só — sem precisar ir até
+    a página Pacientes nem aplicar à família inteira."""
+    criar_casa(logged_client)
+    criar_paciente(logged_client, nome="Quem Mudou", cpf="11111111111")
+    criar_paciente(logged_client, nome="Quem Ficou", cpf="22222222222")
+
+    corpo = logged_client.get("/casa/1").get_data(as_text=True)
+    assert "Situação" in corpo
+    assert 'aria-label="Situação de Quem Mudou"' in corpo
+
+    resp = logged_client.post(
+        "/paciente/1/status", data={"status": "mudou_se", "next": "/casa/1"}
+    )
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/casa/1")
+
+    situacoes = _situacoes()
+    assert situacoes["Quem Mudou"] == "mudou_se"
+    assert situacoes["Quem Ficou"] == "ativo"  # o vizinho de tabela não se mexe
+
+    casa = logged_client.get("/casa/1").get_data(as_text=True)
+    assert "Registros guardados" in casa  # a linha migrou para a seção de baixo
+
+
+# ---------------------------------------------------------------------------
 # Importação do CSV do e-SUS
 # ---------------------------------------------------------------------------
 CSV_ESUS = """e-SUS - Atenção Primária
