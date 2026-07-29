@@ -3135,6 +3135,11 @@ body.confirm-dialog-open { overflow: hidden; }
    ocuparem o mesmo espaço — sem salto de layout ao inverter o sentido. */
 .house-sort-toggle { min-width: 9.75rem; white-space: nowrap; }
 
+/* Imóvel inativo no painel: continua na lista (é por ela que se reativa), mas
+   com o traço interrompido de quem está fora do território acompanhado.
+   Contorno em vez de opacidade — opacidade apagaria o contraste do texto. */
+.house-card-inativa { border-style: dashed; }
+
 /* Situação do paciente: menu suspenso compacto com cor semântica por estado.
    A mudança aplica na hora (data-submit-on-change) — sem botão extra. */
 .status-select {

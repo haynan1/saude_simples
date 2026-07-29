@@ -28,7 +28,7 @@
             <option value="">Selecione a casa</option>
             {% for casa in casas_destino %}
               <option value="{{ casa.id }}">
-                Casa {{ casa.numero_casa }}{% if casa.numero_quadra %} · Quadra {{ casa.numero_quadra }}{% endif %} — {{ casa.endereco }}
+                Casa {{ casa.numero_casa }}{% if casa.numero_quadra %} · Quadra {{ casa.numero_quadra }}{% endif %} — {{ casa.endereco }}{% if not casa|casa_ativa %} (imóvel inativo){% endif %}
               </option>
             {% endfor %}
           </select>

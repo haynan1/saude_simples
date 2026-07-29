@@ -280,6 +280,17 @@ def init_db():
     if "tipo_imovel" not in casa_columns:
         # Imóveis existentes eram todos domicílios — o default preenche o legado.
         conn.execute("ALTER TABLE casas ADD COLUMN tipo_imovel TEXT NOT NULL DEFAULT 'domicilio'")
+    if "status" not in casa_columns:
+        # Imóvel que está na área mas não é mais acompanhado (ex.: lar de idosos
+        # atendido por outra equipe) sai das contagens sem sair do cadastro.
+        # Legado era tudo ativo.
+        conn.execute("ALTER TABLE casas ADD COLUMN status TEXT NOT NULL DEFAULT 'ativa'")
+    if "motivo_inativacao" not in casa_columns:
+        conn.execute("ALTER TABLE casas ADD COLUMN motivo_inativacao TEXT")
+    if "localizacao" not in casa_columns:
+        # Link do mapa (Google Maps, OSM...) apontando a casa. Opcional: o
+        # endereço escrito continua sendo a informação obrigatória.
+        conn.execute("ALTER TABLE casas ADD COLUMN localizacao TEXT")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS configuracao (

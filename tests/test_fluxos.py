@@ -313,6 +313,40 @@ def test_condicoes_de_saude_persistem(logged_client):
     assert "Tem diabetes" in body
 
 
+def _texto_para_copiar(client, casa_id=1, indice=0):
+    """Conteúdo que o botão 'copiar dados' entrega — o atributo vem escapado
+    como HTML, então é preciso desfazer isso para ver o texto real."""
+    import html
+    import re
+
+    corpo = client.get(f"/casa/{casa_id}").get_data(as_text=True)
+    achados = re.findall(r'data-copy="([^"]*)"', corpo)
+    return html.unescape(achados[indice])
+
+
+def test_copiar_dados_do_paciente_sai_em_linhas(logged_client):
+    """Um dado por linha: o texto é colado em prontuário e no WhatsApp, e em
+    tira contínua não se lê nada."""
+    criar_casa(logged_client)
+    criar_paciente(logged_client, nome="Maria Copiada")
+    assert _texto_para_copiar(logged_client).splitlines() == [
+        "Nome: Maria Copiada",
+        "CPF/CNS: 123.456.789-01",
+        "Nascimento: 10/05/1990",
+        "Telefone: (63) 99999-8888",
+    ]
+
+
+def test_copia_nao_leva_campo_em_branco(logged_client):
+    """Cadastro recém-importado quase não tem dado: colar "Telefone:" sem
+    telefone é ruído."""
+    criar_casa(logged_client)
+    criar_paciente(
+        logged_client, nome="Sem Contato", cpf="", telefone="", data_nascimento=""
+    )
+    assert _texto_para_copiar(logged_client).splitlines() == ["Nome: Sem Contato"]
+
+
 def test_excluir_casa_cascateia_pacientes(logged_client):
     criar_casa(logged_client)
     criar_paciente(logged_client)

@@ -13,6 +13,12 @@
     <h1 class="text-2xl font-bold tracking-tight text-slate-900">Casa {{ casa.numero_casa }}</h1>
     <div class="flex flex-wrap items-center gap-2 mt-2">
       {% set tipo = casa.tipo_imovel or 'domicilio' %}
+      {% if not casa_ativa %}
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-slate-200 px-3 py-1 text-xs font-bold text-slate-700">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+          Imóvel inativo
+        </span>
+      {% endif %}
       {% if tipo != 'domicilio' %}
         <span class="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
           {{ tipo|tipo_imovel }}
@@ -26,6 +32,19 @@
       <span class="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
         {{ casa.endereco }}
       </span>
+      {% set mapa = casa|localizacao %}
+      {% if mapa %}
+        <a
+          class="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:underline"
+          href="{{ mapa }}"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Abrir a localização da casa {{ casa.numero_casa }} no mapa"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Ver no mapa
+        </a>
+      {% endif %}
       <span class="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
         {{ pacientes|length }} paciente(s)
       </span>
@@ -69,8 +88,9 @@
               <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ paciente.cpf|cpf_cns }}</td>
               <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ paciente.data_nascimento|data_br }}</td>
               <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ paciente.telefone|telefone }}</td>
-              <td class="px-4 py-3 text-slate-600">{{ paciente.nome_pai }}</td>
-              <td class="px-4 py-3 text-slate-600">{{ paciente.nome_mae }}</td>
+              {# `or ''`: filiação nula (banco importado de fora) imprimia "None" na tabela. #}
+              <td class="px-4 py-3 text-slate-600">{{ paciente.nome_pai or '' }}</td>
+              <td class="px-4 py-3 text-slate-600">{{ paciente.nome_mae or '' }}</td>
               <td class="px-4 py-3">
                 <div class="flex items-center justify-end gap-1.5" role="group" aria-label="Ações do paciente {{ paciente.nome }}">
                   {% if paciente.telefone %}
@@ -85,12 +105,25 @@
                       <svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91S17.5 2 12.04 2Zm0 18.15c-1.48 0-2.93-.4-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.83c0 4.54-3.69 8.23-8.23 8.23Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.24-.64.8-.79.97-.14.16-.29.18-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.13-.15.17-.25.25-.42.08-.16.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.42h-.48c-.16 0-.43.06-.65.31-.22.24-.86.84-.86 2.05 0 1.21.88 2.38 1 2.54.12.16 1.73 2.64 4.19 3.7.59.25 1.04.4 1.4.52.59.19 1.12.16 1.54.1.47-.07 1.47-.6 1.68-1.18.21-.58.21-1.08.14-1.18-.06-.11-.22-.17-.47-.29Z"/></svg>
                     </a>
                   {% endif %}
+                  {# Um dado por linha: o texto copiado é colado em prontuário,
+                     WhatsApp e formulário do e-SUS — tudo lê melhor em bloco do
+                     que numa tira só. `select` derruba o campo em branco, para
+                     não colar "Telefone:" sem telefone. #}
+                  {% set cpf_copia = paciente.cpf|cpf_cns %}
+                  {% set nascimento_copia = paciente.data_nascimento|data_br %}
+                  {% set telefone_copia = paciente.telefone|telefone %}
+                  {% set dados_copia = [
+                       'Nome: ' ~ paciente.nome,
+                       ('CPF/CNS: ' ~ cpf_copia) if cpf_copia else '',
+                       ('Nascimento: ' ~ nascimento_copia) if nascimento_copia else '',
+                       ('Telefone: ' ~ telefone_copia) if telefone_copia else '',
+                     ] %}
                   <button
                     class="btn-secondary house-tile-btn"
                     type="button"
                     title="Copiar dados de {{ paciente.nome }}"
                     aria-label="Copiar dados de {{ paciente.nome }}"
-                    data-copy="{{ ('Nome: ' ~ paciente.nome ~ ' | CPF/CNS: ' ~ (paciente.cpf|cpf_cns) ~ ' | Nascimento: ' ~ (paciente.data_nascimento|data_br) ~ ' | Telefone: ' ~ (paciente.telefone|telefone))|e }}"
+                    data-copy="{{ (dados_copia|select|join('\n'))|e }}"
                   >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
                   </button>
@@ -203,6 +236,57 @@
     </div>
   </section>
 {% endif %}
+
+<!-- Situação do imóvel: inativar é o meio-termo entre manter e excluir -->
+<section class="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+  <div class="mb-4">
+    <h2 class="text-sm font-bold text-slate-900">Situação do imóvel</h2>
+    <p class="text-xs text-slate-500">
+      Imóvel inativo continua no cadastro e sai das contagens do painel, das exportações e do
+      perfil epidemiológico — junto com os moradores. É reversível a qualquer momento.
+    </p>
+  </div>
+
+  {% if casa_ativa %}
+    <form
+      method="post"
+      action="{{ url_for('alterar_situacao_casa', casa_id=casa.id) }}"
+      data-confirm="A casa{% if pacientes %} e {{ pacientes|length }} morador(es){% endif %} saem das contagens e dos relatórios. Nada é apagado — você pode reativar quando quiser."
+      data-confirm-title="Inativar a casa {{ casa.numero_casa }}?"
+      data-confirm-label="Sim, inativar"
+    >
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="status" value="inativa">
+      <label class="form-label" for="motivo">Motivo (opcional)</label>
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <input
+          class="form-input flex-1"
+          id="motivo"
+          name="motivo"
+          type="text"
+          maxlength="200"
+          autocomplete="off"
+          placeholder="Ex.: lar de idosos acompanhado por outra equipe"
+        >
+        <button class="btn-secondary" type="submit">Inativar imóvel</button>
+      </div>
+    </form>
+  {% else %}
+    <div class="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="min-w-0">
+        <p class="text-sm font-semibold text-amber-800">Fora das contagens e dos relatórios</p>
+        <p class="text-xs text-amber-700 mt-0.5">
+          {% if casa.motivo_inativacao %}{{ casa.motivo_inativacao }}{% else %}Nenhum motivo registrado.{% endif %}
+        </p>
+      </div>
+      <form method="post" action="{{ url_for('alterar_situacao_casa', casa_id=casa.id) }}" class="shrink-0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="status" value="ativa">
+        <button class="btn-primary" type="submit">Reativar imóvel</button>
+      </form>
+    </div>
+  {% endif %}
+</section>
 
 {% include "_modal_transferencia.html" %}
 {% endblock %}

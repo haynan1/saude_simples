@@ -23,29 +23,44 @@
       <select class="form-input" id="quadra_id" name="quadra_id">
         <option value="">Sem quadra</option>
         {% for quadra in quadras %}
-          <option value="{{ quadra.id }}" {% if casa.quadra_id == quadra.id %}selected{% endif %}>Quadra Nº {{ quadra.numero_quadra }}</option>
+          <option value="{{ quadra.id }}" {% if valores.quadra_id == quadra.id %}selected{% endif %}>Quadra Nº {{ quadra.numero_quadra }}</option>
         {% endfor %}
       </select>
     </div>
 
     <div class="form-field md-span-2">
       <label class="form-label" for="tipo_imovel">Tipo de imóvel</label>
-      {% set tipo_atual = casa.tipo_imovel or 'domicilio' %}
       <select class="form-input" id="tipo_imovel" name="tipo_imovel">
         {% for opcao in opcoes_tipos_imovel %}
-          <option value="{{ opcao.codigo }}" {% if tipo_atual == opcao.codigo %}selected{% endif %}>{{ opcao.label }}</option>
+          <option value="{{ opcao.codigo }}" {% if valores.tipo_imovel == opcao.codigo %}selected{% endif %}>{{ opcao.label }}</option>
         {% endfor %}
       </select>
     </div>
 
     <div class="form-field md-span-2">
       <label class="form-label" for="numero_casa">Número da casa</label>
-      <input class="form-input" id="numero_casa" name="numero_casa" type="number" min="1" value="{{ casa.numero_casa }}" required>
+      <input class="form-input" id="numero_casa" name="numero_casa" type="number" min="1" value="{{ valores.numero_casa }}" required>
     </div>
 
     <div class="form-field md-span-2">
       <label class="form-label" for="endereco">Endereço</label>
-      <input class="form-input" id="endereco" name="endereco" type="text" value="{{ casa.endereco }}" required>
+      <input class="form-input" id="endereco" name="endereco" type="text" value="{{ valores.endereco }}" required>
+    </div>
+
+    <div class="form-field md-span-2">
+      <label class="form-label" for="localizacao">Localização no mapa <span class="text-slate-500">(opcional)</span></label>
+      <input
+        class="form-input"
+        id="localizacao"
+        name="localizacao"
+        type="url"
+        inputmode="url"
+        maxlength="500"
+        autocomplete="off"
+        placeholder="https://maps.app.goo.gl/..."
+        value="{{ valores.localizacao }}"
+      >
+      <p class="text-xs text-slate-500 mt-1.5">Cole o link de compartilhamento do mapa. Ele fica clicável no painel da casa e no PDF exportado. Deixe vazio para remover.</p>
     </div>
   </div>
 

@@ -41,6 +41,7 @@ ROTAS_PROTEGIDAS_POST = [
     "/quadra/1/excluir",
     "/casa/nova",
     "/casa/1/editar",
+    "/casa/1/situacao",
     "/casa/1/excluir",
     "/casa/1/paciente/novo",
     "/paciente/1/editar",

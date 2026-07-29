@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from functools import wraps
 from io import BytesIO
+from urllib.parse import urlparse
 from xml.sax.saxutils import escape as xml_escape
 
 from dotenv import load_dotenv
@@ -257,6 +258,7 @@ def requisicao_e_local():
 TIPOS_IMOVEL_OPCOES = [
     {"codigo": "domicilio", "label": "Domicílio"},
     {"codigo": "apartamento", "label": "Apartamento"},
+    {"codigo": "lar_idosos", "label": "Lar de Idosos"},
     {"codigo": "loja", "label": "Loja"},
     {"codigo": "lava_jato", "label": "Lava Jato"},
     {"codigo": "terreno_baldio", "label": "Terreno Baldio"},
@@ -268,7 +270,9 @@ TIPOS_IMOVEL_OPCOES = [
 ]
 TIPOS_IMOVEL_POR_CODIGO = {opcao["codigo"]: opcao["label"] for opcao in TIPOS_IMOVEL_OPCOES}
 
-# Tipos onde mora gente: sem morador cadastrado, contam como "vazia" no painel.
+# Tipos onde mora família: sem morador cadastrado, contam como "vazia" no
+# painel. Lar de idosos fica de fora — é moradia coletiva, e instituição sem
+# morador no cadastro não é o mesmo achado de campo que um domicílio vazio.
 TIPOS_IMOVEL_RESIDENCIAIS = {"domicilio", "apartamento"}
 
 
@@ -353,6 +357,60 @@ def status_paciente_de(paciente):
         return normalizar_status_paciente(paciente["status"])
     except (IndexError, KeyError):
         return "ativo"
+
+
+# Situação do imóvel. Casa que está na área mas saiu do acompanhamento da
+# equipe (ex.: lar de idosos assistido por outro serviço) é inativada: o
+# cadastro e os moradores continuam consultáveis, fora de toda contagem e de
+# todo relatório. Exclusão apaga; inativação preserva e é reversível.
+#
+# Aqui não existe a lista {codigo, label} do status do paciente: a casa não tem
+# menu de situação, e sim dois botões com o texto na própria tela. Guardar
+# rótulos que ninguém lê é dado morto.
+STATUS_CASA_VALIDOS = ("ativa", "inativa")
+
+# Nos JOINs/WHEREs. O COALESCE cobre três casos de uma vez: banco legado sem a
+# coluna preenchida, LEFT JOIN sem casa correspondente e paciente sem casa
+# vinculada — todos contam como ativos, que é o comportamento de sempre.
+SQL_CASA_ATIVA = "COALESCE(casas.status, 'ativa') = 'ativa'"
+
+
+def normalizar_status_casa(value):
+    value = str(value or "").strip()
+    return value if value in STATUS_CASA_VALIDOS else "ativa"
+
+
+def status_casa_de(casa):
+    """Lê a situação de uma linha de casa tolerando bancos antigos importados
+    (coluna pode não existir até o init_db rodar) e valores nulos."""
+    try:
+        return normalizar_status_casa(casa["status"])
+    except (IndexError, KeyError):
+        return "ativa"
+
+
+def casa_esta_ativa(casa):
+    return status_casa_de(casa) == "ativa"
+
+
+def localizacao_de(casa):
+    """Link do mapa pronto para virar href — na tela e no PDF.
+
+    Revalida na LEITURA, não só na escrita. O formulário não é a única porta de
+    entrada da coluna: `/banco/importar` aceita um arquivo .db de outra máquina
+    e valida estrutura, não conteúdo. Um "javascript:" gravado direto na linha
+    chegaria aqui sem nunca ter passado pela validação do formulário. Valor que
+    não passa não vira link — desaparece, em vez de virar vetor.
+
+    Tolera também banco antigo em que a coluna ainda não existe.
+    """
+    try:
+        bruto = casa["localizacao"]
+    except (IndexError, KeyError):
+        return ""
+
+    url, erro = normalizar_link_localizacao(bruto)
+    return "" if erro else (url or "")
 
 
 def get_next_house_number(quadra_id=None):
@@ -464,6 +522,51 @@ def pdf_image(path, max_width, max_height):
     image.drawHeight = image.imageHeight * ratio
     image.hAlign = "CENTER"
     return image
+
+
+# Link de localização da casa. O valor colado pelo operador vira href numa
+# página e num PDF, então o esquema da URL é fronteira de segurança: só http e
+# https entram. "javascript:" num <a> é XSS; "file:" abriria caminho local da
+# máquina. Sem esquema, assume-se https — quem copia do app do Maps costuma
+# colar "maps.app.goo.gl/...".
+LOCALIZACAO_ESQUEMAS = ("http", "https")
+LOCALIZACAO_TAMANHO_MAXIMO = 500
+
+
+def normalizar_link_localizacao(value):
+    """Devolve (url_normalizada_ou_None, erro_ou_None)."""
+    valor = str(value or "").strip()
+    if not valor:
+        return None, None
+
+    if len(valor) > LOCALIZACAO_TAMANHO_MAXIMO:
+        return None, f"O link do mapa é longo demais (máximo {LOCALIZACAO_TAMANHO_MAXIMO} caracteres)."
+
+    # Espaço ou controle no meio da URL: cola incompleta, ou tentativa de
+    # esconder o esquema real ("java\tscript:"). Recusa antes de interpretar.
+    if any(char.isspace() or ord(char) < 32 for char in valor):
+        return None, "O link do mapa não pode conter espaços — cole o endereço completo."
+
+    # Só é "esquema" o que a RFC 3986 chama de esquema: letra seguida de
+    # letras/dígitos/+/-/. até os dois-pontos. Assim "maps.app.goo.gl/x" ganha
+    # https, e "www.site.com/mapa?q=1:2" não é confundido com esquema "www...".
+    esquema, dois_pontos, _resto = valor.partition(":")
+    tem_esquema = bool(dois_pontos) and esquema[:1].isalpha() and all(
+        caractere.isascii() and (caractere.isalnum() or caractere in "+-.")
+        for caractere in esquema
+    )
+    if not tem_esquema:
+        valor = f"https://{valor}"
+
+    try:
+        partes = urlparse(valor)
+    except ValueError:
+        return None, "Link do mapa inválido. Cole o endereço que o app de mapas gera para o local."
+
+    if partes.scheme.lower() not in LOCALIZACAO_ESQUEMAS or not partes.netloc:
+        return None, "O link do mapa precisa começar com https:// (ou http://)."
+
+    return valor, None
 
 
 def formatar_cpf_ou_cns(value):
@@ -701,6 +804,14 @@ def rotulo_grupos(grupos):
 
 
 def build_dashboard_stats(casas, pacientes):
+    """Indicadores do território a partir das listas já carregadas.
+
+    Contrato: `casas` pode vir com imóveis inativos — são descartados aqui, de
+    modo que a régua seja a mesma venha a lista de onde vier. `pacientes`, não:
+    a linha do paciente não carrega a situação da casa dele, então quem
+    consulta é que precisa aplicar `SQL_PACIENTE_ATIVO AND SQL_CASA_ATIVA`.
+    """
+    casas = [casa for casa in casas if casa_esta_ativa(casa)]
     total_casas = len(casas)
     # "Vazia" é um achado de campo apenas para imóvel residencial — loja,
     # escola ou terreno baldio sem morador é o esperado, não um alerta.
@@ -749,18 +860,30 @@ def carregar_dados_relatorio(condicoes_selecionadas=None, filtro_sem_selecao=Fal
     condicoes_selecionadas = condicoes_selecionadas or []
     grupos_selecionados = grupos_selecionados or []
     conn = get_db_connection()
+    # O relatório é o retrato do que a equipe acompanha: imóvel inativo fica de
+    # fora, e com ele os moradores — quem mora em casa que a equipe não segue
+    # não é população acompanhada. O cadastro continua intacto no sistema.
     casas = conn.execute(
         f"""
         SELECT casas.*, quadras.numero_quadra, COUNT(pacientes.id) AS total_pacientes
         FROM casas
         LEFT JOIN quadras ON quadras.id = casas.quadra_id
         LEFT JOIN pacientes ON pacientes.casa_id = casas.id AND {SQL_PACIENTE_ATIVO}
+        WHERE {SQL_CASA_ATIVA}
         GROUP BY casas.id
         ORDER BY quadras.numero_quadra IS NULL, quadras.numero_quadra, casas.numero_casa, casas.id
         """
     ).fetchall()
+    # `pacientes.*` é obrigatório com o JOIN: `*` traria as colunas de casas
+    # por cima (id, status) e o relatório passaria a ler a casa como paciente.
     pacientes = conn.execute(
-        f"SELECT * FROM pacientes WHERE {SQL_PACIENTE_ATIVO} ORDER BY nome"
+        f"""
+        SELECT pacientes.*
+        FROM pacientes
+        LEFT JOIN casas ON casas.id = pacientes.casa_id
+        WHERE {SQL_PACIENTE_ATIVO} AND {SQL_CASA_ATIVA}
+        ORDER BY pacientes.nome
+        """
     ).fetchall()
     conn.close()
 
@@ -978,6 +1101,9 @@ app.add_template_filter(listar_condicoes, "condicoes_lista")
 app.add_template_filter(listar_condicao_codigos, "condicoes_codigos")
 app.add_template_filter(status_paciente_label, "status_paciente")
 app.add_template_filter(status_paciente_de, "status_codigo")
+app.add_template_filter(status_casa_de, "status_casa")
+app.add_template_filter(casa_esta_ativa, "casa_ativa")
+app.add_template_filter(localizacao_de, "localizacao")
 
 
 @app.context_processor
@@ -1014,11 +1140,15 @@ def paciente_com_documento(documento_digitos, excluir_id=None):
 
 
 def get_casas_para_transferencia(excluir_casa_id=None):
-    """Casas candidatas a destino de transferência, na mesma ordem do painel."""
+    """Casas candidatas a destino de transferência, na mesma ordem do painel.
+
+    Imóvel inativo continua na lista, marcado: mudar-se para o lar de idosos
+    que a equipe não acompanha é justamente um destino real — e a transferência
+    é o que tira o morador das contagens sem apagar o cadastro."""
     conn = get_db_connection()
     casas = conn.execute(
         """
-        SELECT casas.id, casas.numero_casa, casas.endereco, quadras.numero_quadra
+        SELECT casas.id, casas.numero_casa, casas.endereco, casas.status, quadras.numero_quadra
         FROM casas
         LEFT JOIN quadras ON quadras.id = casas.quadra_id
         ORDER BY quadras.numero_quadra IS NULL, quadras.numero_quadra, casas.numero_casa, casas.id
@@ -1268,8 +1398,15 @@ def index():
                  quadras.numero_quadra IS NULL, quadras.numero_quadra, casas.id
         """
     ).fetchall()
+    # Indicadores do painel: morador de imóvel inativo sai da conta junto com
+    # o imóvel (o LEFT JOIN + COALESCE mantém quem ainda não tem casa).
     pacientes = conn.execute(
-        f"SELECT sexo, data_nascimento, condicoes_saude FROM pacientes WHERE {SQL_PACIENTE_ATIVO}"
+        f"""
+        SELECT pacientes.sexo, pacientes.data_nascimento, pacientes.condicoes_saude
+        FROM pacientes
+        LEFT JOIN casas ON casas.id = pacientes.casa_id
+        WHERE {SQL_PACIENTE_ATIVO} AND {SQL_CASA_ATIVA}
+        """
     ).fetchall()
     pacientes_busca = []
     if busca:
@@ -1300,10 +1437,15 @@ def index():
     # operador saber quantos imóveis existem de cada tipo/quadra.
     contagem_tipos = {opcao["codigo"]: 0 for opcao in TIPOS_IMOVEL_OPCOES}
     sem_quadra_total = 0
+    # A lista mostra o território inteiro, inclusive o que não é acompanhado —
+    # é por ela que se reativa um imóvel. Quem some é o número no indicador.
+    casas_inativas = 0
     for casa in casas:
         contagem_tipos[tipo_imovel_de(casa)] += 1
         if casa["quadra_id"] is None:
             sem_quadra_total += 1
+        if not casa_esta_ativa(casa):
+            casas_inativas += 1
 
     total_casas_geral = len(casas)
     casas_filtradas = casas
@@ -1330,6 +1472,7 @@ def index():
         contagem_tipos=contagem_tipos,
         sem_quadra_total=sem_quadra_total,
         total_casas_geral=total_casas_geral,
+        casas_inativas=casas_inativas,
         filtro_ativo=bool(tipos_filtro or quadra_filtro),
     )
 
@@ -1409,60 +1552,54 @@ def cadastrar_casa():
         endereco = request.form.get("endereco", "").strip()
         numero_casa_text = request.form.get("numero_casa", "").strip()
         tipo_imovel = normalizar_tipo_imovel(request.form.get("tipo_imovel"))
+        localizacao_texto = request.form.get("localizacao", "").strip()
         quadra_id, quadra_error = parse_positive_int(request.form.get("quadra_id"), "a quadra", required=False)
+
+        # Um único ponto de re-exibição: qualquer erro devolve o formulário com
+        # tudo que o operador já tinha digitado (inclusive o tipo de imóvel, que
+        # o template sempre esperou receber de volta).
+        def reexibir(proximo_numero, quadra_selecionada):
+            return render_template(
+                "cadastrar_casa.html",
+                proximo_numero=proximo_numero,
+                endereco=endereco,
+                numero_casa=numero_casa_text,
+                tipo_imovel=tipo_imovel,
+                localizacao=localizacao_texto,
+                quadra_id=quadra_selecionada,
+                quadras=quadras,
+            )
 
         if not endereco:
             flash("Informe o endereço da casa.", "danger")
-            return render_template(
-                "cadastrar_casa.html",
-                proximo_numero=get_next_house_number(),
-                endereco=endereco,
-                numero_casa=numero_casa_text,
-                quadra_id=quadra_id,
-                quadras=quadras,
-            )
+            return reexibir(get_next_house_number(), quadra_id)
 
         if quadra_error:
             flash(quadra_error, "danger")
-            return render_template(
-                "cadastrar_casa.html",
-                proximo_numero=get_next_house_number(),
-                endereco=endereco,
-                numero_casa=numero_casa_text,
-                quadra_id=None,
-                quadras=quadras,
-            )
+            return reexibir(get_next_house_number(), None)
 
         if not quadra_exists(quadra_id):
             flash("Quadra selecionada não existe.", "danger")
-            return render_template(
-                "cadastrar_casa.html",
-                proximo_numero=get_next_house_number(),
-                endereco=endereco,
-                numero_casa=numero_casa_text,
-                quadra_id=None,
-                quadras=quadras,
-            )
+            return reexibir(get_next_house_number(), None)
+
+        localizacao, localizacao_error = normalizar_link_localizacao(localizacao_texto)
+        if localizacao_error:
+            flash(localizacao_error, "danger")
+            return reexibir(get_next_house_number(quadra_id), quadra_id)
 
         numero_final, numero_error = parse_positive_int(numero_casa_text, "o número da casa", required=False)
         if numero_error:
             flash(numero_error, "danger")
-            return render_template(
-                "cadastrar_casa.html",
-                proximo_numero=get_next_house_number(quadra_id),
-                endereco=endereco,
-                numero_casa=numero_casa_text,
-                quadra_id=quadra_id,
-                quadras=quadras,
-            )
+            return reexibir(get_next_house_number(quadra_id), quadra_id)
 
         if numero_final is None:
             numero_final = get_next_house_number(quadra_id)
 
         conn = get_db_connection()
         conn.execute(
-            "INSERT INTO casas (quadra_id, numero_casa, endereco, tipo_imovel) VALUES (?, ?, ?, ?)",
-            (quadra_id, numero_final, endereco, tipo_imovel),
+            "INSERT INTO casas (quadra_id, numero_casa, endereco, tipo_imovel, localizacao)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (quadra_id, numero_final, endereco, tipo_imovel, localizacao),
         )
         conn.commit()
         conn.close()
@@ -1490,6 +1627,7 @@ def detalhes_casa(casa_id):
     return render_template(
         "detalhes_casa.html",
         casa=casa,
+        casa_ativa=casa_esta_ativa(casa),
         pacientes=pacientes,
         pacientes_inativos=pacientes_inativos,
         casas_destino=get_casas_para_transferencia(excluir_casa_id=casa_id),
@@ -1503,41 +1641,131 @@ def editar_casa(casa_id):
     if casa is None:
         return redirect(url_for("index"))
 
+    def valores_gravados():
+        return {
+            "quadra_id": casa["quadra_id"],
+            "numero_casa": casa["numero_casa"],
+            "endereco": casa["endereco"],
+            "tipo_imovel": tipo_imovel_de(casa),
+            "localizacao": localizacao_de(casa),
+        }
+
     quadras = get_quadras()
     if request.method == "POST":
         numero_casa_text = request.form.get("numero_casa", "").strip()
         endereco = request.form.get("endereco", "").strip()
         tipo_imovel = normalizar_tipo_imovel(request.form.get("tipo_imovel"))
+        localizacao_texto = request.form.get("localizacao", "").strip()
         quadra_id, quadra_error = parse_positive_int(request.form.get("quadra_id"), "a quadra", required=False)
+
+        # Erro devolve o formulário com o que foi digitado, não com o que está
+        # gravado — o operador não perde a correção pela metade. Os valores
+        # viajam já normalizados (quadra como int), então o template compara
+        # tipos iguais na hora de marcar o <option> selecionado.
+        def reexibir():
+            return render_template(
+                "editar_casa.html",
+                casa=casa,
+                quadras=quadras,
+                valores={
+                    "quadra_id": quadra_id,
+                    "numero_casa": numero_casa_text,
+                    "endereco": endereco,
+                    "tipo_imovel": tipo_imovel,
+                    "localizacao": localizacao_texto,
+                },
+            )
 
         if not endereco:
             flash("Informe o endereço da casa.", "danger")
-            return render_template("editar_casa.html", casa=casa, quadras=quadras)
+            return reexibir()
 
         if quadra_error:
             flash(quadra_error, "danger")
-            return render_template("editar_casa.html", casa=casa, quadras=quadras)
+            return reexibir()
 
         if not quadra_exists(quadra_id):
             flash("Quadra selecionada não existe.", "danger")
-            return render_template("editar_casa.html", casa=casa, quadras=quadras)
+            return reexibir()
+
+        localizacao, localizacao_error = normalizar_link_localizacao(localizacao_texto)
+        if localizacao_error:
+            flash(localizacao_error, "danger")
+            return reexibir()
 
         numero_casa, numero_error = parse_positive_int(numero_casa_text, "o número da casa")
         if numero_error:
             flash(numero_error, "danger")
-            return render_template("editar_casa.html", casa=casa, quadras=quadras)
+            return reexibir()
 
         conn = get_db_connection()
         conn.execute(
-            "UPDATE casas SET quadra_id = ?, numero_casa = ?, endereco = ?, tipo_imovel = ? WHERE id = ?",
-            (quadra_id, numero_casa, endereco, tipo_imovel, casa_id),
+            "UPDATE casas SET quadra_id = ?, numero_casa = ?, endereco = ?, tipo_imovel = ?,"
+            " localizacao = ? WHERE id = ?",
+            (quadra_id, numero_casa, endereco, tipo_imovel, localizacao, casa_id),
         )
         conn.commit()
         conn.close()
         flash("Casa atualizada com sucesso.", "success")
         return redirect(url_for("detalhes_casa", casa_id=casa_id))
 
-    return render_template("editar_casa.html", casa=casa, quadras=quadras)
+    return render_template(
+        "editar_casa.html", casa=casa, quadras=quadras, valores=valores_gravados()
+    )
+
+
+@app.route("/casa/<int:casa_id>/situacao", methods=["POST"])
+@login_required
+def alterar_situacao_casa(casa_id):
+    """Inativa/reativa o imóvel. Nada é apagado: a casa e os moradores saem das
+    contagens e dos relatórios enquanto estiverem inativos, e voltam inteiros
+    na reativação."""
+    destino = url_for("detalhes_casa", casa_id=casa_id)
+    status = request.form.get("status", "").strip()
+    if status not in STATUS_CASA_VALIDOS:
+        flash("Situação inválida.", "danger")
+        return redirect(destino)
+
+    conn = get_db_connection()
+    casa = conn.execute(
+        "SELECT numero_casa FROM casas WHERE id = ?", (casa_id,)
+    ).fetchone()
+    if casa is None:
+        conn.close()
+        flash("Casa não encontrada.", "warning")
+        return redirect(url_for("index"))
+
+    # O motivo só existe enquanto a casa está inativa: reativar limpa o campo
+    # para não deixar justificativa velha grudada no cadastro.
+    motivo = request.form.get("motivo", "").strip()[:200] if status == "inativa" else None
+    conn.execute(
+        "UPDATE casas SET status = ?, motivo_inativacao = ? WHERE id = ?",
+        (status, motivo or None, casa_id),
+    )
+    conn.commit()
+    conn.close()
+
+    # Muda o que entra nos números oficiais do território: fica no log, como as
+    # demais mutações de largo alcance.
+    logger.info(
+        "Situação da casa %s alterada para '%s' a partir de %s",
+        casa_id,
+        status,
+        request.remote_addr,
+    )
+
+    if status == "ativa":
+        flash(
+            f"Casa {casa['numero_casa']} reativada — voltou para as contagens e os relatórios.",
+            "success",
+        )
+    else:
+        flash(
+            f"Casa {casa['numero_casa']} inativada. O cadastro e os moradores continuam "
+            "guardados, fora das contagens e dos relatórios.",
+            "success",
+        )
+    return redirect(destino)
 
 
 @app.route("/casa/<int:casa_id>/excluir", methods=["POST"])
@@ -3099,6 +3327,15 @@ def exportar_pdf():
         endereco_pdf = f"<b>Endereço:</b> {xml_escape(casa['endereco'] or '')}"
         if tipo_casa != "domicilio":
             endereco_pdf += f" &nbsp;|&nbsp; <b>Tipo:</b> {xml_escape(tipo_imovel_label(tipo_casa))}"
+        # Link do mapa clicável no PDF: quem abre o relatório no celular vai da
+        # linha do endereço direto para a navegação. Impresso, continua sendo
+        # texto — por isso o endereço escrito nunca é substituído pelo link.
+        mapa = localizacao_de(casa)
+        if mapa:
+            # xml_escape não mexe em aspas: dentro de um atributo, uma aspa no
+            # valor fecharia o href e o resto da URL viraria marcação.
+            href = xml_escape(mapa, {'"': "&quot;"})
+            endereco_pdf += f' &nbsp;|&nbsp; <a href="{href}" color="#0b5ed7"><u>Ver no mapa</u></a>'
 
         tabela, total = montar_bloco_casa(
             f"Casa Nº {casa['numero_casa']}", endereco_pdf, lista_pacientes

@@ -47,6 +47,22 @@
       <label class="form-label" for="endereco">Endereço</label>
       <input class="form-input" id="endereco" name="endereco" type="text" value="{{ endereco or '' }}" required>
     </div>
+
+    <div class="form-field md-span-2">
+      <label class="form-label" for="localizacao">Localização no mapa <span class="text-slate-500">(opcional)</span></label>
+      <input
+        class="form-input"
+        id="localizacao"
+        name="localizacao"
+        type="url"
+        inputmode="url"
+        maxlength="500"
+        autocomplete="off"
+        placeholder="https://maps.app.goo.gl/..."
+        value="{{ localizacao or '' }}"
+      >
+      <p class="text-xs text-slate-500 mt-1.5">Cole o link de compartilhamento do mapa. Ele fica clicável no painel da casa e no PDF exportado.</p>
+    </div>
   </div>
 
   <div class="form-actions border-t border-slate-100 px-6 py-4">
