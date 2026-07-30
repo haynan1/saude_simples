@@ -475,11 +475,6 @@ def get_quadras():
     return quadras
 
 
-def parse_optional_int(value):
-    value = str(value or "").strip()
-    return int(value) if value else None
-
-
 def parse_positive_int(value, field_name, required=True):
     value = str(value or "").strip()
     if not value:

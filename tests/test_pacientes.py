@@ -845,3 +845,32 @@ def test_restaurar_backup_de_versao_antiga_reaplica_migracoes(logged_client):
     # Painel e página de pacientes funcionam sobre o banco restaurado.
     assert logged_client.get("/").status_code == 200
     assert "Paciente Legado" in logged_client.get("/pacientes").get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# Quadra no painel da casa
+# ---------------------------------------------------------------------------
+def test_painel_da_casa_mostra_a_quadra_e_leva_a_listagem_filtrada(logged_client):
+    """A quadra é o contexto hierárquico da casa e aparece acima do título, com
+    link para a listagem já filtrada por ela."""
+    criar_quadra(logged_client, numero="13")
+    criar_casa(logged_client, endereco="Rua das Flores, 42", numero="42", quadra_id="1")
+    corpo = logged_client.get("/casa/1").get_data(as_text=True)
+
+    assert 'class="house-quadra"' in corpo
+    assert "QUADRA 13" in corpo.upper()
+    assert 'href="/?quadra=1"' in corpo
+
+    # E não sobra a pílula antiga dizendo a mesma coisa duas vezes.
+    assert corpo.count("Quadra 13") == 1
+
+
+def test_casa_sem_quadra_diz_que_esta_sem_quadra(logged_client):
+    """Silêncio aqui era ambíguo: o agente não sabia se a casa estava sem
+    quadra ou se a tela apenas não mostrava. O link leva às casas por
+    localizar (filtro `0`)."""
+    criar_casa(logged_client, endereco="Rua B, 9", numero="9")
+    corpo = logged_client.get("/casa/1").get_data(as_text=True)
+
+    assert "Sem quadra" in corpo
+    assert 'href="/?quadra=0"' in corpo
