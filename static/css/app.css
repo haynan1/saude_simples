@@ -227,6 +227,13 @@ html:not(.theme-dark) .app-shell .divide-slate-200 > :not([hidden]) ~ :not([hidd
   --accent-border: #99f6e4;
   --accent-ink: #0f766e;
   --accent-contrast: #ffffff;
+  /* Fundo dos botões sólidos. Separado de --accent porque texto branco sobre
+     o teal-600 da marca dá 3,74:1 e reprova no WCAG AA (4,5:1) — e o botão
+     primário é o controle mais usado do sistema. O teal-700 sobe para 5,47:1
+     sem sair da paleta. --accent segue servindo borda, foco e ícone, onde a
+     exigência é 3:1. */
+  --accent-solid: #0f766e;
+  --accent-solid-hover: #115e59;
   --ring: rgba(13, 148, 136, 0.18);
   --sidebar-bg: #04302e;
   --sidebar-elev: rgba(20, 184, 166, 0.10);
@@ -276,6 +283,12 @@ html:not(.theme-dark) .app-shell .divide-slate-200 > :not([hidden]) ~ :not([hidd
   --accent-soft-2: rgba(20, 184, 166, 0.20);
   --accent-border: rgba(94, 234, 212, 0.30);
   --accent-ink: #5eead4;
+  /* No escuro o caminho é o inverso: escurecer o fundo sumiria com o botão,
+     então o teal fica claro e a TINTA é que vira escura — 5,75:1, contra os
+     2,49:1 do branco sobre o mesmo teal. */
+  --accent-solid: #14b8a6;
+  --accent-solid-hover: #2dd4bf;
+  --accent-contrast: #04302e;
   --ring: rgba(45, 212, 191, 0.24);
   --sidebar-bg: #04302e;
   --sidebar-sub: #99f6e4;
@@ -560,7 +573,15 @@ html.app-locked body {
   background: var(--sidebar-elev) !important;
 }
 
-.app-shell .sidebar-shell .text-blue-300 {
+/* A sidebar é escura NOS DOIS temas, então o texto secundário dela não pode
+   herdar os cinzas calibrados para fundo claro: slate-400/500 sobre o
+   #04302e dava 3,01:1. O token --sidebar-sub já existia para isso e só não
+   cobria as classes que os templates passaram a usar. */
+.app-shell .sidebar-shell .text-blue-300,
+.app-shell .sidebar-shell .text-slate-400,
+.app-shell .sidebar-shell .text-slate-500,
+.app-mobile-menu .text-slate-400,
+.app-mobile-menu .text-slate-500 {
   color: var(--sidebar-sub) !important;
 }
 
@@ -866,24 +887,46 @@ html:not(.sidebar-collapsed) .app-shell nav .nav-active::before {
     appearance: base-select;
   }
 
+  /* A lista nasce do tamanho da opção mais longa: com o endereço inteiro numa
+     opção (transferência de família), ela passava da borda do modal e da tela.
+     Presa à largura do select, o texto longo quebra em linha em vez de esticar
+     a caixa. A altura já tinha limite; a largura não tinha. */
   select.form-input::picker(select) {
     background: #ffffff;
     border: 1px solid #cbd5e1;
     border-radius: 0.65rem;
     box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+    box-sizing: border-box;
     margin-top: 4px;
     max-height: min(18rem, 50vh);
     overflow-y: auto;
     padding: 0.25rem;
+    /* O padrão do Chrome é `position-try-order: most-block-size`: ele abre no
+       lado com MAIS espaço, não no lado onde cabe — e por isso a lista subia
+       por cima do cabeçalho do próprio modal. Com a ordem normal, ela abre
+       abaixo do campo e só sobe se não couber. */
+    position-area: block-end span-inline-start;
+    position-try-order: normal;
     scrollbar-width: thin;
+    width: anchor-size(width);
   }
 
   select.form-input option {
     border-radius: 0.4rem;
     color: #0f172a;
     font-size: 0.85rem;
-    line-height: 1.2;
-    padding: 0.125rem 0.6rem;
+    line-height: 1.25;
+    padding: 0.3rem 0.6rem;
+    white-space: normal;
+  }
+
+  /* Fechado, o select mostra a opção escolhida numa linha só: endereço longo
+     é cortado com reticências, não empurra a caixa. */
+  select.form-input::selectedcontent {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* O checkmark padrão desloca só a opção marcada; o destaque fica no fundo. */
@@ -949,12 +992,12 @@ html:not(.sidebar-collapsed) .app-shell nav .nav-active::before {
 }
 
 .btn-primary {
-  background: var(--accent);
+  background: var(--accent-solid);
   color: var(--accent-contrast);
 }
 
 .btn-primary:hover {
-  background: var(--accent-strong);
+  background: var(--accent-solid-hover);
 }
 
 .btn-secondary {
@@ -2007,8 +2050,8 @@ a,
   color: var(--accent-ink);
 }
 
-.app-shell .btn-primary { background: var(--accent); color: var(--accent-contrast); }
-.app-shell .btn-primary:hover { background: var(--accent-strong); }
+.app-shell .btn-primary { background: var(--accent-solid); color: var(--accent-contrast); }
+.app-shell .btn-primary:hover { background: var(--accent-solid-hover); }
 
 .app-shell .socket-button-primary { background: var(--accent); }
 .app-shell .socket-button-primary:hover { background: var(--accent-strong); }
@@ -3139,6 +3182,215 @@ body.confirm-dialog-open { overflow: hidden; }
    com o traço interrompido de quem está fora do território acompanhado.
    Contorno em vez de opacidade — opacidade apagaria o contraste do texto. */
 .house-card-inativa { border-style: dashed; }
+
+/* Resumo recolhível do paciente. A faixa de detalhes ocupava três linhas por
+   morador e competia com a linha da própria pessoa; virou uma linha só.
+   Fechada, ela anuncia o que existe ("2 condições · observação · filiação") em
+   vez de despejar o texto: o conteúdo cru tinha largura diferente a cada
+   morador e a tabela virava um bloco de prosa. Forma igual em toda linha é o
+   que deixa a coluna varrer de cima a baixo. */
+/* O piso é o que impede a volta da sobreposição. As cinco colunas de medida
+   fixa somam 55rem; abaixo de 69rem a coluna do nome seria espremida a nada e
+   o conteúdo voltaria a vazar por cima da vizinha (layout fixo não empurra).
+   Com o piso, o .overflow-x-auto em volta rola a tabela — degradar para rolagem
+   é honesto; degradar para controle sobreposto é defeito. */
+.patients-table { min-width: 69rem; table-layout: fixed; }
+
+/* A linha do resumo não tem borda superior: ela pertence à linha do paciente
+   logo acima, não é um registro separado. */
+.patient-summary-row > td { border-top: 0; padding-bottom: 0.5rem; }
+.patient-detalhes > td { border-top: 0; }
+
+/* Aberto, o resumo vira o cabeçalho do bloco: mesmo fundo, sem fio entre eles.
+   Sem isso, "Detalhes" ficava numa faixa branca e o conteúdo numa faixa cinza
+   logo abaixo — duas tarjas para uma informação só. */
+.patient-summary-row:has(+ .patient-detalhes:not([hidden])) > td {
+  background: #f8fafc;
+  padding-bottom: 0.15rem;
+}
+
+.theme-dark .patient-summary-row:has(+ .patient-detalhes:not([hidden])) > td {
+  background: #0b1120;
+}
+
+/* 0.8125rem: a 12px a linha lia como legenda de rodapé e o operador precisava
+   aproximar do monitor. Ela é um controle, não uma nota de pé de página. */
+.patient-summary {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.8125rem;
+  gap: 0.4rem;
+  padding: 0.25rem 0;
+  text-align: left;
+  width: 100%;
+}
+
+.patient-summary:hover { color: #334155; }
+.patient-summary:focus-visible { border-radius: 0.35rem; outline: 2px solid #2563eb; outline-offset: 2px; }
+
+/* `min-width: 0` é o que permite a elipse: sem ele o item flex adota a largura
+   do conteúdo e o texto vaza em vez de cortar. Com o sinal curto a elipse virou
+   rede de segurança (nome de condição longo, tela estreita), não a regra. */
+.patient-summary-texto {
+  align-items: baseline;
+  display: flex;
+  gap: 0.45rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A hierarquia entre "Detalhes" e o sinal sai do PESO e do escurecimento do
+   rótulo — não de clarear o sinal. Cinza claro (#94a3b8) dava 2,6:1 no branco:
+   reprova no AA (4,5:1) e desfaria justamente a legibilidade que este bloco
+   veio consertar. Assim o rótulo tem 10,3:1 e o sinal herda 4,8:1. */
+.patient-summary-rotulo { color: #334155; flex: none; font-weight: 600; }
+
+.patient-summary-sinais {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.patient-summary-caret {
+  flex: none;
+  height: 0.95rem;
+  transition: transform 150ms ease;
+  width: 0.95rem;
+}
+
+.patient-summary[aria-expanded="true"] .patient-summary-caret,
+.table-detail-toggle[aria-pressed="true"] .patient-summary-caret {
+  transform: rotate(90deg);
+}
+
+/* O rótulo diz o que o clique FAZ, igual ao interruptor do topo da tabela:
+   fechado, a linha é a prévia do conteúdo; aberto, ela vira a ação de fechar —
+   o conteúdo já está logo abaixo, organizado, e repeti-lo cortado seria ruído.
+   O texto mora no template, não aqui: palavra de interface em folha de estilo
+   não se traduz, não aparece em teste e escapa do leitor de tela. */
+.patient-summary-fechar { display: none; font-weight: 600; }
+.patient-summary[aria-expanded="true"] .patient-summary-texto { display: none; }
+.patient-summary[aria-expanded="true"] .patient-summary-fechar { display: inline; }
+
+.table-detail-toggle {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 0.5rem;
+  color: #475569;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  gap: 0.35rem;
+  padding: 0.3rem 0.55rem;
+}
+
+.table-detail-toggle:hover { background: #f1f5f9; color: #0f172a; }
+.table-detail-toggle:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+
+/* Conteúdo aberto. Fica como classe de componente, junto do resto do bloco
+   recolhível, em vez de seis utilitárias soltas no markup — inclusive o
+   tamanho da fonte, que como valor arbitrário no template não se revisa. */
+.patient-detalhes-condicoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding-top: 0.5rem;
+}
+
+.patient-detalhes-chip {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 9999px;
+  color: #475569;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.15rem 0.65rem;
+}
+
+/* 0.8125rem também aqui: observação carrega medicamento e dosagem, que é
+   exatamente o texto que não se pode ler errado. */
+.patient-detalhes-linha {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  padding-top: 0.5rem;
+}
+
+/* Mesma regra no escuro: o sinal herda #94a3b8 (7:1) e quem se destaca é o
+   rótulo. */
+.theme-dark .patient-summary { color: #94a3b8; }
+.theme-dark .patient-summary:hover { color: #e5edf7; }
+.theme-dark .patient-summary-rotulo { color: #e2e8f0; }
+.theme-dark .patient-detalhes-chip {
+  background: #1f2937;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+.theme-dark .table-detail-toggle { color: #9aa8bb; }
+.theme-dark .table-detail-toggle:hover { background: #1f2937; color: #e5edf7; }
+
+/* Menu de ações do painel da casa. Um botão só no lugar de três botões e duas
+   seções: o que é ação sai da página e vira lista, e a página volta a ser
+   sobre os moradores. */
+.house-menu {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.85rem;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+  min-width: 15rem;
+  padding: 0.35rem;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 40;
+}
+
+.house-menu-group {
+  color: #94a3b8;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  padding: 0.5rem 0.65rem 0.25rem;
+  text-transform: uppercase;
+}
+
+.house-menu-item {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 0.6rem;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.85rem;
+  font-weight: 600;
+  gap: 0.6rem;
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  width: 100%;
+}
+
+.house-menu-item:hover { background: #f1f5f9; color: #0f172a; }
+.house-menu-item:focus-visible { background: #f1f5f9; outline: 2px solid #2563eb; outline-offset: -2px; }
+.house-menu-item svg { color: #64748b; flex: none; height: 1rem; width: 1rem; }
+.house-menu-item:hover svg { color: #334155; }
+.house-menu-separator { background: #e2e8f0; border: 0; height: 1px; margin: 0.35rem 0.3rem; }
+
+.theme-dark .house-menu { background: #111827; border-color: #273449; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5); }
+.theme-dark .house-menu-group { color: #64748b; }
+.theme-dark .house-menu-item { color: #e5edf7; }
+.theme-dark .house-menu-item:hover { background: #1f2937; color: #ffffff; }
+.theme-dark .house-menu-item:focus-visible { background: #1f2937; outline-color: #60a5fa; }
+.theme-dark .house-menu-item svg { color: #9aa8bb; }
+.theme-dark .house-menu-item:hover svg { color: #e5edf7; }
+.theme-dark .house-menu-separator { background: #273449; }
 
 /* Situação do paciente: menu suspenso compacto com cor semântica por estado.
    A mudança aplica na hora (data-submit-on-change) — sem botão extra. */

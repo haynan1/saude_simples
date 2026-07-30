@@ -50,26 +50,103 @@
       </span>
     </div>
   </div>
-  <div class="flex flex-wrap items-center gap-2">
-    <a class="btn-primary" href="{{ url_for('cadastrar_paciente', casa_id=casa.id) }}">Cadastrar paciente</a>
-    {% if pacientes %}
-      <button
-        class="btn-secondary"
-        type="button"
-        data-transfer-open
-        data-transfer-action="{{ url_for('transferir_familia', casa_id=casa.id) }}"
-        data-transfer-title="Transferir família da casa {{ casa.numero_casa }}"
-        title="Transferir todos os moradores ativos para outra casa"
-      >Transferir família</button>
-    {% endif %}
-    <a class="btn-secondary" href="{{ url_for('editar_casa', casa_id=casa.id) }}">Editar casa</a>
+  {# Tudo que é ação vive num menu só: o cabeçalho volta a ser sobre a casa, e
+     a página volta a ser sobre os moradores. #}
+  <div class="relative shrink-0" x-data="houseMenu" @keydown.escape.window="close">
+    <button
+      class="btn-primary"
+      type="button"
+      @click="toggle"
+      :aria-expanded="open"
+      aria-haspopup="menu"
+      aria-controls="menu-casa-{{ casa.id }}"
+    >
+      Ações da casa
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+    </button>
+
+    <div
+      class="house-menu"
+      id="menu-casa-{{ casa.id }}"
+      role="menu"
+      x-show="open"
+      x-cloak
+      @click.outside="close"
+    >
+      <p class="house-menu-group">Moradores</p>
+      <a class="house-menu-item" role="menuitem" href="{{ url_for('cadastrar_paciente', casa_id=casa.id) }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v6m3-3h-6m-3 1a4 4 0 100-8 4 4 0 000 8zm-7 8a7 7 0 0114 0H5z"/></svg>
+        Cadastrar paciente
+      </a>
+      {% if pacientes %}
+        <button
+          class="house-menu-item"
+          type="button"
+          role="menuitem"
+          @click="close"
+          data-transfer-open
+          data-transfer-action="{{ url_for('transferir_familia', casa_id=casa.id) }}"
+          data-transfer-title="Transferir família da casa {{ casa.numero_casa }}"
+        >
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4"/></svg>
+          Transferir família
+        </button>
+      {% endif %}
+      {% if pacientes or pacientes_inativos %}
+        <button class="house-menu-item" type="button" role="menuitem" @click="close" data-dialog-open="dialogo-familia">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.36-1.86M17 20H7m10 0v-2c0-.66-.13-1.29-.36-1.86m0 0a5 5 0 00-9.28 0M7 20H2v-2a3 3 0 015.36-1.86M7 20v-2c0-.66.13-1.29.36-1.86m0 0a5 5 0 019.28 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Situação da família
+        </button>
+      {% endif %}
+
+      <hr class="house-menu-separator">
+
+      <p class="house-menu-group">Imóvel</p>
+      <a class="house-menu-item" role="menuitem" href="{{ url_for('editar_casa', casa_id=casa.id) }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        Editar casa
+      </a>
+      <button class="house-menu-item" type="button" role="menuitem" @click="close" data-dialog-open="dialogo-imovel">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Situação do imóvel
+      </button>
+    </div>
   </div>
 </div>
 
 {% if pacientes %}
   <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+    {# Um interruptor para a tabela inteira: quem prepara visita abre tudo uma
+       vez e a escolha fica salva no aparelho, como a sidebar e a acessibilidade. #}
+    <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2">
+      <p class="text-sm text-slate-500">{{ pacientes|length }} morador(es) nesta casa</p>
+      <button type="button" class="table-detail-toggle" data-detalhes-todos aria-pressed="false">
+        <svg class="patient-summary-caret" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+        <span data-detalhes-rotulo>Abrir detalhes</span>
+      </button>
+    </div>
     <div class="overflow-x-auto">
-      <table class="w-full text-sm">
+      {# Largura fixa por coluna: em layout automático, o texto do resumo (sem
+         quebra, para poder cortar com reticências) definia a largura mínima da
+         tabela e empurrava as colunas para fora da tela. Com as medidas
+         declaradas, a coluna do nome fica com o que sobra e o resumo corta. #}
+      <table class="w-full text-sm patients-table">
+        {# Medidas conferidas no navegador contra o conteúdo real, já somando o
+           respiro lateral da célula: coluna curta demais faz o conteúdo vazar
+           por cima da vizinha, porque em layout fixo ele não empurra.
+           Ações: os cinco controles somam 317px e a célula dava 240px úteis.
+           Como o grupo alinha à direita, os 77px que sobravam vazavam para a
+           ESQUERDA e o ícone do WhatsApp caía em cima do "Ativo" da coluna
+           Situação. 22.5rem = os 317px do conteúdo + 24px de respiro lateral,
+           mais folga para variação de fonte entre máquinas. #}
+        <colgroup>
+          <col>
+          <col style="width: 8rem">
+          <col style="width: 6.5rem">
+          <col style="width: 8.5rem">
+          <col style="width: 9.5rem">
+          <col style="width: 22.5rem">
+        </colgroup>
         <thead>
           <tr class="bg-slate-50 text-left">
             <th class="px-3 py-3 font-semibold text-slate-600">Nome</th>
@@ -82,6 +159,23 @@
         </thead>
         <tbody class="divide-y divide-slate-100">
           {% for paciente in pacientes %}
+            {# Detalhe recolhido: filiação, observação e condições saem da faixa
+               cinza de três linhas e viram uma linha só sob o nome.
+               Fechada, essa linha diz o que EXISTE ali dentro — não o conteúdo.
+               Despejar o texto de verdade (medicamento, filiação) devolvia a
+               poluição que o recolhimento veio resolver: cada morador virava um
+               parágrafo de largura diferente e a tabela deixava de ser tabela.
+               O sinal é curto e tem a mesma forma em toda linha, então o olho
+               desce pela coluna em vez de ler. O conteúdo está a um clique. #}
+            {% set condicoes = paciente.condicoes_saude|condicoes_lista %}
+            {% set filiacao = [] %}
+            {% if paciente.nome_pai %}{% set _ = filiacao.append('Pai: ' ~ paciente.nome_pai) %}{% endif %}
+            {% if paciente.nome_mae %}{% set _ = filiacao.append('Mãe: ' ~ paciente.nome_mae) %}{% endif %}
+            {% set sinais = [] %}
+            {% if condicoes %}{% set _ = sinais.append('1 condição' if condicoes|length == 1 else condicoes|length ~ ' condições') %}{% endif %}
+            {% if paciente.observacao %}{% set _ = sinais.append('observação') %}{% endif %}
+            {% if filiacao %}{% set _ = sinais.append('filiação') %}{% endif %}
+            {% set resumo = sinais|join(' · ') %}
             <tr class="table-row hover:bg-slate-50">
               <td class="px-3 py-3 font-semibold text-slate-900">{{ paciente.nome }}</td>
               <td class="px-3 py-3 whitespace-nowrap text-slate-600">{{ paciente.cpf|cpf_cns }}</td>
@@ -169,28 +263,47 @@
                 </div>
               </td>
             </tr>
-            {# Filiação desceu para a linha de baixo junto com observação e
-               condições: são dados de conferência, não de varredura. Em coluna,
-               empurravam as ações para fora da tela em telas de notebook. #}
-            {% set condicoes = paciente.condicoes_saude|condicoes_lista %}
-            {% set filiacao = [] %}
-            {% if paciente.nome_pai %}{% set _ = filiacao.append('Pai: ' ~ paciente.nome_pai) %}{% endif %}
-            {% if paciente.nome_mae %}{% set _ = filiacao.append('Mãe: ' ~ paciente.nome_mae) %}{% endif %}
-            {% if filiacao or paciente.observacao or condicoes %}
-              <tr>
+            {% if resumo %}
+              {# A linha ocupa a largura inteira da tabela: dentro da célula do
+                 nome ela esticava a coluna e empurrava as outras para fora da
+                 tela. #}
+              <tr class="patient-summary-row">
+                <td colspan="6" class="px-3">
+                  <button
+                    type="button"
+                    class="patient-summary"
+                    data-detalhes-alvo="detalhes-{{ paciente.id }}"
+                    aria-expanded="false"
+                    aria-controls="detalhes-{{ paciente.id }}"
+                    title="Condições, observação e filiação de {{ paciente.nome }}"
+                  >
+                    <svg class="patient-summary-caret" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                    <span class="patient-summary-texto">
+                      <span class="patient-summary-rotulo">Detalhes</span>
+                      <span class="patient-summary-sinais">{{ resumo }}</span>
+                    </span>
+                    <span class="patient-summary-fechar">Fechar detalhes</span>
+                  </button>
+                </td>
+              </tr>
+              <tr id="detalhes-{{ paciente.id }}" class="patient-detalhes" hidden>
                 <td colspan="6" class="px-3 pb-3 pt-0 bg-slate-50">
-                  {% if filiacao %}
-                    <p class="text-xs text-slate-600 pt-2">{{ filiacao|join(' · ') }}</p>
-                  {% endif %}
-                  {% if paciente.observacao %}
-                    <p class="text-xs text-slate-600 pt-2"><span class="font-bold text-slate-700">Obs:</span> {{ paciente.observacao }}</p>
-                  {% endif %}
+                  {# Medida, respiro e tamanho da pílula moram no app.css, como
+                     o resto deste bloco recolhível: uma classe de componente no
+                     lugar de seis utilitárias, e o tamanho da fonte deixa de ser
+                     valor arbitrário no meio do markup. #}
                   {% if condicoes %}
-                    <div class="flex flex-wrap gap-1.5 pt-2">
+                    <div class="patient-detalhes-condicoes">
                       {% for condicao in condicoes %}
-                        <span class="rounded-full bg-slate-100 border border-slate-200 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">{{ condicao }}</span>
+                        <span class="patient-detalhes-chip">{{ condicao }}</span>
                       {% endfor %}
                     </div>
+                  {% endif %}
+                  {% if paciente.observacao %}
+                    <p class="patient-detalhes-linha text-slate-600"><span class="font-bold text-slate-700">Obs:</span> {{ paciente.observacao }}</p>
+                  {% endif %}
+                  {% if filiacao %}
+                    <p class="patient-detalhes-linha text-slate-500">{{ filiacao|join(' · ') }}</p>
                   {% endif %}
                 </td>
               </tr>
@@ -256,88 +369,113 @@
   </section>
 {% endif %}
 
+{# Diálogos do menu de ações. Usam as classes .filter-dialog dos outros modais
+   do app — mesma transição, mesmo travamento de scroll — e são abertos pelo
+   mecanismo genérico [data-dialog-open] do app.js. #}
 {% if pacientes or pacientes_inativos %}
-  <!-- Situação da família: a casa inteira muda de estado de uma vez -->
-  <section class="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-    <div class="mb-4">
-      <h2 class="text-sm font-bold text-slate-900">Situação da família</h2>
-      <p class="text-xs text-slate-500">
-        Aplica a mesma situação a todos os moradores desta casa de uma vez — a família que se mudou
-        ou saiu da área sai das contagens junta, com os cadastros guardados aqui. Óbito continua
-        sendo registrado pessoa a pessoa, na página Pacientes.
-      </p>
-    </div>
-    <form
-      method="post"
-      action="{{ url_for('alterar_status_familia', casa_id=casa.id) }}"
-      data-confirm="A situação escolhida vale para todos os moradores desta casa. Quem está marcado como óbito não é alterado, e nada é apagado — dá para voltar atrás."
-      data-confirm-title="Aplicar a todos os moradores da casa {{ casa.numero_casa }}?"
-      data-confirm-label="Sim, aplicar"
-    >
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="form-label" for="status-familia">Nova situação dos moradores</label>
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <select class="form-input flex-1" id="status-familia" name="status">
-          <option value="mudou_se">Mudou-se — a família saiu deste endereço</option>
-          <option value="fora_de_area">Fora de Área — não é mais do território</option>
-          <option value="ativo">Ativo — a família voltou</option>
-        </select>
-        <button class="btn-secondary" type="submit">Aplicar a todos</button>
-      </div>
-    </form>
-  </section>
+  <div id="dialogo-familia" class="filter-dialog" data-dialog hidden aria-hidden="true">
+    <div class="filter-dialog-backdrop" data-dialog-close></div>
+    <section class="filter-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="dialogo-familia-titulo">
+      <form method="post" action="{{ url_for('alterar_status_familia', casa_id=casa.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <header class="filter-dialog-head">
+          <div>
+            <p class="filter-dialog-kicker">Moradores</p>
+            <h2 id="dialogo-familia-titulo" class="filter-dialog-title">Situação da família</h2>
+            <p class="filter-dialog-sub">
+              Aplica a mesma situação a todos os moradores da casa {{ casa.numero_casa }} de uma vez.
+              A família que se mudou ou saiu da área sai das contagens junta, com os cadastros
+              guardados aqui. Óbito continua sendo registrado pessoa a pessoa.
+            </p>
+          </div>
+          <button type="button" class="a11y-close" data-dialog-close aria-label="Fechar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </header>
+
+        <div class="filter-dialog-body">
+          <label class="form-label" for="status-familia">Nova situação dos moradores</label>
+          <select class="form-input" id="status-familia" name="status">
+            <option value="mudou_se">Mudou-se — a família saiu deste endereço</option>
+            <option value="fora_de_area">Fora de Área — não é mais do território</option>
+            <option value="ativo">Ativo — a família voltou</option>
+          </select>
+        </div>
+
+        <footer class="filter-dialog-foot">
+          <button type="button" class="btn-secondary" data-dialog-close>Cancelar</button>
+          <button type="submit" class="btn-primary">Aplicar a todos</button>
+        </footer>
+      </form>
+    </section>
+  </div>
 {% endif %}
 
-<!-- Situação do imóvel: inativar é o meio-termo entre manter e excluir -->
-<section class="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-  <div class="mb-4">
-    <h2 class="text-sm font-bold text-slate-900">Situação do imóvel</h2>
-    <p class="text-xs text-slate-500">
-      Imóvel inativo continua no cadastro e sai das contagens do painel, das exportações e do
-      perfil epidemiológico — junto com os moradores. É reversível a qualquer momento.
-    </p>
-  </div>
-
-  {% if casa_ativa %}
-    <form
-      method="post"
-      action="{{ url_for('alterar_situacao_casa', casa_id=casa.id) }}"
-      data-confirm="A casa{% if pacientes %} e {{ pacientes|length }} morador(es){% endif %} saem das contagens e dos relatórios. Nada é apagado — você pode reativar quando quiser."
-      data-confirm-title="Inativar a casa {{ casa.numero_casa }}?"
-      data-confirm-label="Sim, inativar"
-    >
+<div id="dialogo-imovel" class="filter-dialog" data-dialog hidden aria-hidden="true">
+  <div class="filter-dialog-backdrop" data-dialog-close></div>
+  <section class="filter-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="dialogo-imovel-titulo">
+    <form method="post" action="{{ url_for('alterar_situacao_casa', casa_id=casa.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="status" value="inativa">
-      <label class="form-label" for="motivo">Motivo (opcional)</label>
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <input
-          class="form-input flex-1"
-          id="motivo"
-          name="motivo"
-          type="text"
-          maxlength="200"
-          autocomplete="off"
-          placeholder="Ex.: lar de idosos acompanhado por outra equipe"
-        >
-        <button class="btn-secondary" type="submit">Inativar imóvel</button>
+      <header class="filter-dialog-head">
+        <div>
+          <p class="filter-dialog-kicker">Imóvel</p>
+          <h2 id="dialogo-imovel-titulo" class="filter-dialog-title">Situação do imóvel</h2>
+          <p class="filter-dialog-sub">
+            Imóvel inativo continua no cadastro e sai das contagens do painel, das exportações e do
+            perfil epidemiológico — junto com os moradores. É reversível a qualquer momento.
+          </p>
+        </div>
+        <button type="button" class="a11y-close" data-dialog-close aria-label="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </header>
+
+      <div class="filter-dialog-body">
+        {% if casa_ativa %}
+          <input type="hidden" name="status" value="inativa">
+          <label class="form-label" for="motivo">Motivo (opcional)</label>
+          <input
+            class="form-input"
+            id="motivo"
+            name="motivo"
+            type="text"
+            maxlength="200"
+            autocomplete="off"
+            placeholder="Ex.: lar de idosos acompanhado por outra equipe"
+          >
+          <p class="text-xs text-slate-500 mt-2">
+            A casa{% if pacientes %} e {{ pacientes|length }} morador(es){% endif %} saem das
+            contagens e dos relatórios. Nada é apagado.
+          </p>
+        {% else %}
+          <input type="hidden" name="status" value="ativa">
+          <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <p class="text-sm font-semibold text-amber-800">Hoje: fora das contagens e dos relatórios</p>
+            <p class="text-xs text-amber-700 mt-0.5">
+              {% if casa.motivo_inativacao %}{{ casa.motivo_inativacao }}{% else %}Nenhum motivo registrado.{% endif %}
+            </p>
+          </div>
+          <p class="text-xs text-slate-500 mt-2">
+            Reativar devolve a casa e os moradores às contagens do painel e aos relatórios.
+          </p>
+        {% endif %}
       </div>
+
+      <footer class="filter-dialog-foot">
+        <button type="button" class="btn-secondary" data-dialog-close>Cancelar</button>
+        {% if casa_ativa %}
+          <button type="submit" class="btn-primary">Inativar imóvel</button>
+        {% else %}
+          <button type="submit" class="btn-primary">Reativar imóvel</button>
+        {% endif %}
+      </footer>
     </form>
-  {% else %}
-    <div class="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div class="min-w-0">
-        <p class="text-sm font-semibold text-amber-800">Fora das contagens e dos relatórios</p>
-        <p class="text-xs text-amber-700 mt-0.5">
-          {% if casa.motivo_inativacao %}{{ casa.motivo_inativacao }}{% else %}Nenhum motivo registrado.{% endif %}
-        </p>
-      </div>
-      <form method="post" action="{{ url_for('alterar_situacao_casa', casa_id=casa.id) }}" class="shrink-0">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="status" value="ativa">
-        <button class="btn-primary" type="submit">Reativar imóvel</button>
-      </form>
-    </div>
-  {% endif %}
-</section>
+  </section>
+</div>
 
 {% include "_modal_transferencia.html" %}
 {% endblock %}

@@ -15,108 +15,27 @@ fica igual nos dois casos.
 Sem o navegador do Playwright instalado, o módulo inteiro é pulado (não quebra a
 suíte). Para instalar: `python -m playwright install chromium`.
 """
-import os
-import threading
-
 import pytest
-from werkzeug.security import generate_password_hash
-from werkzeug.serving import make_server
 
 import db
-from tests.conftest import SENHA_TESTE
-
-
-def _chromium_instalado():
-    """True só quando o binário do Chromium do Playwright já foi baixado."""
-    try:
-        from playwright.sync_api import sync_playwright
-
-        with sync_playwright() as p:
-            caminho = p.chromium.executable_path
-        return bool(caminho) and os.path.exists(caminho)
-    except Exception:
-        return False
-
+from tests.conftest import chromium_instalado, entrar
 
 pytestmark = [
     pytest.mark.e2e,
     pytest.mark.skipif(
-        not _chromium_instalado(),
+        not chromium_instalado(),
         reason="Navegador do Playwright ausente — rode: python -m playwright install chromium",
     ),
 ]
 
 
 # ---------------------------------------------------------------------------
-# Infraestrutura: servidor Flask de verdade + navegador Chromium
-# ---------------------------------------------------------------------------
-@pytest.fixture()
-def servidor(tmp_path):
-    """Sobe o app num servidor WSGI real, numa thread, com banco isolado e
-    senha já configurada. Devolve a URL base (porta escolhida pelo SO)."""
-    db.DATABASE = str(tmp_path / "e2e.db")
-    db.BACKUP_DIR = str(tmp_path / "backups")
-    db.INSTANCE_DIR = str(tmp_path / "instance")
-    db.SETUP_TOKEN_PATH = str(tmp_path / "instance" / "setup_token")
-    db.init_db()
-    db.set_senha_hash(generate_password_hash(SENHA_TESTE))
-
-    import app as app_module
-
-    # CSRF fica de fora: aqui o alvo é a navegação no navegador, não o token
-    # (isso já é coberto em test_seguranca.py). Rate limit e o marcador diário
-    # do perfil são zerados para o teste começar do zero.
-    app_module.app.config["WTF_CSRF_ENABLED"] = False
-    app_module._login_attempts.clear()
-    app_module._perfil_registrado_dia = None
-
-    servidor = make_server("127.0.0.1", 0, app_module.app, threaded=True)
-    porta = servidor.server_address[1]
-    thread = threading.Thread(target=servidor.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{porta}"
-    finally:
-        servidor.shutdown()
-        thread.join(timeout=5)
-
-
-@pytest.fixture(scope="session")
-def _playwright():
-    from playwright.sync_api import sync_playwright
-
-    with sync_playwright() as p:
-        yield p
-
-
-@pytest.fixture(scope="session")
-def navegador(_playwright):
-    browser = _playwright.chromium.launch()
-    yield browser
-    browser.close()
-
-
-@pytest.fixture()
-def pagina(navegador):
-    """Contexto de navegador limpo por teste (sem cookies/estado vazando)."""
-    contexto = navegador.new_context()
-    pagina = contexto.new_page()
-    try:
-        yield pagina
-    finally:
-        contexto.close()
-
-
-# ---------------------------------------------------------------------------
-# Helpers
+# A infraestrutura e2e (servidor real, navegador, login) mora no conftest.py:
+# é compartilhada com os outros arquivos e2e e o fixture de sessão do
+# Playwright precisa ser único na suíte.
 # ---------------------------------------------------------------------------
 def _entrar(pagina, servidor):
-    """Faz login pela tela real e espera cair no painel autenticado."""
-    pagina.goto(f"{servidor}/login")
-    pagina.fill("#senha", SENHA_TESTE)
-    pagina.click("button.login-button")
-    pagina.wait_for_url(f"{servidor}/")
-    pagina.wait_for_selector("#app-main")
+    return entrar(pagina, servidor)
 
 
 def _marcar_janela(pagina):
@@ -256,3 +175,169 @@ def test_dialogo_confirmado_executa_exclusao(pagina, servidor):
     conn.close()
     assert ativos == 0
     assert na_lixeira == 1
+
+
+def _semear_casas_com_enderecos_longos():
+    """Doze casas com endereços de campo, do tamanho que o operador escreve."""
+    enderecos = [
+        "Rua das Palmeiras, 145 - Setor Aeroporto",
+        "Avenida Juscelino Kubitschek, 1020, Quadra 12 Lote 4 - Centro",
+        "Rua Projetada A, casa dos fundos, proximo ao poste 7 - Vila Nova",
+    ]
+    conn = db.get_db_connection()
+    for numero in range(1, 13):
+        conn.execute(
+            "INSERT INTO casas (numero_casa, endereco, tipo_imovel) VALUES (?, ?, 'domicilio')",
+            (numero, enderecos[(numero - 1) % len(enderecos)]),
+        )
+    conn.execute(
+        "INSERT INTO pacientes (id, casa_id, nome, status) VALUES (1, 1, 'Morador', 'ativo')"
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_lista_do_select_nao_escapa_do_campo(pagina, servidor):
+    """O picker de `appearance: base-select` nasce do tamanho da opção mais
+    longa. Com o endereço inteiro numa opção, ele passava da borda do modal e
+    subia por cima do próprio cabeçalho do diálogo. Presa ao campo, a lista
+    abre abaixo, na largura dele, dentro da janela."""
+    _semear_casas_com_enderecos_longos()
+    _entrar(pagina, servidor)
+    pagina.goto(f"{servidor}/casa/1")
+    pagina.wait_for_selector("#app-main")
+
+    pagina.click("button:has-text('Ações da casa')")
+    pagina.click(".house-menu-item:has-text('Transferir família')")
+    pagina.locator("#transfer-dialog").wait_for(state="visible")
+    campo = pagina.locator("#transfer-dialog select")
+    campo.click()
+
+    medidas = pagina.evaluate(
+        """(() => {
+          const sel = document.querySelector('#transfer-dialog select');
+          const campo = sel.getBoundingClientRect();
+          const opcoes = [...sel.querySelectorAll('option')].map(o => o.getBoundingClientRect());
+          return {
+            larguraMaxima: Math.max(...opcoes.map(o => o.width)),
+            larguraDoCampo: campo.width,
+            direitaMaxima: Math.max(...opcoes.map(o => o.right)),
+            topoDaLista: Math.min(...opcoes.map(o => o.top)),
+            baseDoCampo: campo.bottom,
+            janela: window.innerWidth,
+          };
+        })()"""
+    )
+    # Nenhuma opção é mais larga que o campo, nem vaza para fora da janela.
+    assert medidas["larguraMaxima"] <= medidas["larguraDoCampo"] + 4
+    assert medidas["direitaMaxima"] <= medidas["janela"]
+    # E a lista desce a partir do campo, em vez de subir sobre o diálogo.
+    assert medidas["topoDaLista"] >= medidas["baseDoCampo"] - 2
+
+
+def test_detalhes_do_paciente_abrem_e_a_escolha_fica_salva(pagina, servidor):
+    """O recolhimento é a resposta à tela poluída: fechado por padrão, abre por
+    linha ou pela tabela inteira — e a escolha do interruptor sobrevive à
+    navegação, para o agente não repetir o clique em cada casa."""
+    conn = db.get_db_connection()
+    conn.execute(
+        "INSERT INTO casas (id, numero_casa, endereco, tipo_imovel)"
+        " VALUES (1, 1, 'Rua A, 1', 'domicilio')"
+    )
+    for indice, nome in enumerate(("Ana Com Detalhe", "Bruno Com Detalhe"), start=1):
+        conn.execute(
+            "INSERT INTO pacientes (id, casa_id, nome, status, nome_mae, condicoes_saude)"
+            " VALUES (?, 1, ?, 'ativo', 'Mae Registrada', 'hipertensao')",
+            (indice, nome),
+        )
+    conn.commit()
+    conn.close()
+
+    _entrar(pagina, servidor)
+    pagina.goto(f"{servidor}/casa/1")
+    pagina.wait_for_selector("#app-main")
+
+    detalhe = pagina.locator("#detalhes-1")
+    gatilho = pagina.locator('[data-detalhes-alvo="detalhes-1"]')
+    assert detalhe.is_hidden()
+
+    # Fechado, o gatilho anuncia o que existe e não o conteúdo: no navegador de
+    # verdade é aqui que se vê se o texto cru vazou para o estado recolhido.
+    fechado = gatilho.inner_text()
+    assert "Detalhes" in fechado
+    assert "1 condição" in fechado and "filiação" in fechado
+    assert "Mae Registrada" not in fechado
+    assert "Fechar detalhes" not in fechado
+
+    # Uma linha por vez.
+    gatilho.click()
+    detalhe.wait_for(state="visible")
+    assert gatilho.inner_text().strip() == "Fechar detalhes"
+    assert pagina.locator("#detalhes-2").is_hidden()
+
+    # O interruptor vale para a tabela inteira.
+    pagina.locator("[data-detalhes-todos]").click()
+    pagina.locator("#detalhes-2").wait_for(state="visible")
+
+    # E a escolha volta com o conteúdo depois de navegar para outra página.
+    pagina.click('a[href="/"]')
+    pagina.wait_for_selector("text=Quadras e casas cadastradas")
+    pagina.goto(f"{servidor}/casa/1")
+    pagina.wait_for_selector("#app-main")
+    assert pagina.locator("#detalhes-1").is_visible()
+    assert pagina.locator("#detalhes-2").is_visible()
+    assert pagina.get_attribute("[data-detalhes-todos]", "aria-pressed") == "true"
+
+
+def test_controles_da_linha_nao_se_sobrepoem(pagina, servidor):
+    """A coluna Ações alinha o grupo à direita: se os botões não couberem na
+    célula, o excedente vaza para a ESQUERDA e o ícone do WhatsApp pousa em
+    cima do "Ativo" da coluna Situação. A suíte inteira passava com os dois
+    controles sobrepostos — HTML válido, layout quebrado —, então a medida
+    tem de vir do navegador. Vale para toda largura: em layout fixo a célula
+    não cresce com o conteúdo."""
+    conn = db.get_db_connection()
+    conn.execute(
+        "INSERT INTO casas (id, numero_casa, endereco, tipo_imovel)"
+        " VALUES (1, 1, 'Rua A, 1', 'domicilio')"
+    )
+    conn.execute(
+        "INSERT INTO pacientes (id, casa_id, nome, cpf, data_nascimento, telefone,"
+        " nome_mae, status) VALUES (1, 1, 'MARIA JOSE DE SOUZA SANTOS',"
+        " '31520170149', '1961-01-27', '6496091751', 'ALTIVA', 'ativo')"
+    )
+    conn.commit()
+    conn.close()
+
+    _entrar(pagina, servidor)
+
+    for largura in (1280, 1440, 1920):
+        pagina.set_viewport_size({"width": largura, "height": 900})
+        pagina.goto(f"{servidor}/casa/1")
+        pagina.wait_for_selector("#app-main")
+        medidas = pagina.evaluate(
+            """() => {
+              const tds = document.querySelectorAll(
+                'table.patients-table tbody tr:first-child td');
+              const grupo = tds[5].querySelector('div');
+              const itens = [...grupo.children];
+              const precisa = itens.reduce(
+                (soma, el) => soma + el.getBoundingClientRect().width, 0)
+                + (itens.length - 1) * 6;
+              return {
+                direitaDoSelect: tds[4].querySelector('select').getBoundingClientRect().right,
+                esquerdaDoPrimeiroBotao: itens[0].getBoundingClientRect().left,
+                caixaDoGrupo: grupo.getBoundingClientRect().width,
+                precisa,
+              };
+            }"""
+        )
+        # O primeiro botão começa depois de onde o select termina.
+        assert medidas["esquerdaDoPrimeiroBotao"] > medidas["direitaDoSelect"], (
+            f"a {largura}px os controles da linha se sobrepõem"
+        )
+        # E o grupo cabe na própria célula, que é a causa-raiz do vazamento.
+        assert medidas["precisa"] <= medidas["caixaDoGrupo"], (
+            f"a {largura}px as ações precisam de {medidas['precisa']:.0f}px"
+            f" e a célula oferece {medidas['caixaDoGrupo']:.0f}px"
+        )

@@ -145,6 +145,7 @@
     window.applyInputMasks?.(main);
     window.applyWhatsAppLinks?.(main);
     window.applyWhatsAppTemplateEditors?.(main);
+    window.applyPatientDetails?.(main);
     window.Alpine?.initTree?.(main);
     executeScripts(main);
   }

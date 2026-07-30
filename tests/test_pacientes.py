@@ -547,6 +547,118 @@ def test_casa_sem_morador_nao_mostra_o_controle_da_familia(logged_client):
     assert "Situação da família" not in corpo
 
 
+# ---------------------------------------------------------------------------
+# Menu de ações do painel da casa
+# ---------------------------------------------------------------------------
+def test_menu_reune_todas_as_acoes_da_casa(logged_client):
+    """Um botão só: o que era três botões no cabeçalho e duas seções no fim da
+    página virou uma lista."""
+    criar_casa(logged_client)
+    criar_paciente(logged_client, nome="Moradora")
+    corpo = logged_client.get("/casa/1").get_data(as_text=True)
+
+    assert 'x-data="houseMenu"' in corpo
+    assert "Ações da casa" in corpo
+    for acao in (
+        "Cadastrar paciente",
+        "Transferir família",
+        "Situação da família",
+        "Editar casa",
+        "Situação do imóvel",
+    ):
+        assert acao in corpo
+
+    # Os dois diálogos existem no HTML e apontam para as rotas certas.
+    assert 'id="dialogo-familia"' in corpo
+    assert 'id="dialogo-imovel"' in corpo
+    assert 'action="/casa/1/status-familia"' in corpo
+    assert 'action="/casa/1/situacao"' in corpo
+
+
+def test_detalhe_do_paciente_nasce_recolhido_com_resumo(logged_client):
+    """A faixa de detalhes ocupava três linhas por morador. Agora ela nasce
+    fechada, e a linha anuncia o que existe ali — sem despejar o conteúdo, que
+    era a poluição que o recolhimento veio resolver."""
+    criar_casa(logged_client)
+    logged_client.post(
+        "/casa/1/paciente/novo",
+        data={"nome": "Maria Com Tudo", "cpf": "11111111111", "telefone": "",
+              "data_nascimento": "1961-01-27", "sexo": "Feminino",
+              "nome_pai": "Vicente Antonio", "nome_mae": "Altiva Maria",
+              "observacao": "HIPERTENSA. Uso continuo de METFORMINA",
+              "condicoes_saude": ["hipertensao", "diabetes"]},
+    )
+    corpo = logged_client.get("/casa/1").get_data(as_text=True)
+
+    # O bloco existe, porém fechado.
+    assert 'id="detalhes-1" class="patient-detalhes" hidden' in corpo
+    assert 'aria-expanded="false"' in corpo
+    assert 'aria-controls="detalhes-1"' in corpo
+
+    # Fechada, a linha diz o que há dentro, na ordem clínica primeiro.
+    inicio = corpo.index('class="patient-summary-sinais"')
+    sinais = corpo[inicio:corpo.index("</span>", inicio)]
+    assert "2 condições" in sinais
+    assert sinais.index("2 condições") < sinais.index("observação")
+    assert sinais.index("observação") < sinais.index("filiação")
+
+    # E o conteúdo de verdade não vaza para o estado fechado: ele mora no bloco
+    # recolhido, depois do resumo.
+    for cru in ("Tem hipertensão arterial", "METFORMINA", "Vicente Antonio"):
+        assert cru not in sinais
+        assert cru in corpo[corpo.index('id="detalhes-1"'):]
+
+
+def test_resumo_recolhido_concorda_o_singular(logged_client):
+    """"1 condições" é o tipo de detalhe que denuncia software descuidado."""
+    criar_casa(logged_client)
+    logged_client.post(
+        "/casa/1/paciente/novo",
+        data={"nome": "Uma Condicao", "cpf": "11111111111", "telefone": "",
+              "data_nascimento": "1961-01-27", "sexo": "Feminino",
+              "nome_pai": "", "nome_mae": "", "observacao": "",
+              "condicoes_saude": ["hipertensao"]},
+    )
+    corpo = logged_client.get("/casa/1").get_data(as_text=True)
+    inicio = corpo.index('class="patient-summary-sinais"')
+    sinais = corpo[inicio:corpo.index("</span>", inicio)]
+    assert "1 condição" in sinais
+    assert "condições" not in sinais
+
+
+def test_paciente_sem_detalhe_nao_ganha_linha_de_resumo(logged_client):
+    """Sem condição, observação nem filiação não há o que recolher: a linha do
+    morador fica sozinha, sem afordância morta."""
+    criar_casa(logged_client)
+    criar_paciente(
+        logged_client, nome="Sem Detalhe", nome_pai="", nome_mae="", observacao=""
+    )
+    corpo = logged_client.get("/casa/1").get_data(as_text=True)
+    assert "Sem Detalhe" in corpo
+    assert "patient-summary-texto" not in corpo
+    assert "patient-detalhes" not in corpo
+
+
+def test_interruptor_de_detalhes_da_tabela(logged_client):
+    criar_casa(logged_client)
+    criar_paciente(logged_client, nome="Com Filiacao", nome_pai="Pai Presente")
+    corpo = logged_client.get("/casa/1").get_data(as_text=True)
+    assert "data-detalhes-todos" in corpo
+    assert "Abrir detalhes" in corpo
+
+
+def test_menu_esconde_o_que_nao_se_aplica_a_casa_vazia(logged_client):
+    """Casa sem morador não oferece transferir família nem situação da família
+    — e o diálogo correspondente nem é renderizado."""
+    criar_casa(logged_client)
+    corpo = logged_client.get("/casa/1").get_data(as_text=True)
+    assert "Transferir família" not in corpo
+    assert 'id="dialogo-familia"' not in corpo
+    # O do imóvel continua: inativar não depende de morador.
+    assert 'id="dialogo-imovel"' in corpo
+    assert "Situação do imóvel" in corpo
+
+
 def test_situacao_individual_pelo_painel_da_casa(logged_client):
     """A coluna Situação resolve o caso de um morador só — sem precisar ir até
     a página Pacientes nem aplicar à família inteira."""

@@ -282,6 +282,109 @@
   });
 
   // ---------------------------------------------------------------------------
+  // Detalhes do paciente (painel da casa): a linha de resumo abre o bloco com
+  // condições, observação e filiação. O interruptor do topo vale para a tabela
+  // inteira e a escolha fica salva por aparelho — quem prepara visita abre uma
+  // vez e não repete o clique a cada casa.
+  // ---------------------------------------------------------------------------
+  const CHAVE_DETALHES = 'detalhesPacienteAbertos';
+
+  function mostrarDetalhe(gatilho, aberto) {
+    const linha = document.getElementById(gatilho.dataset.detalhesAlvo);
+    if (!linha) return;
+    linha.hidden = !aberto;
+    gatilho.setAttribute('aria-expanded', String(aberto));
+  }
+
+  function sincronizarInterruptor(escopo, aberto) {
+    const interruptor = (escopo || document).querySelector('[data-detalhes-todos]');
+    if (!interruptor) return;
+    interruptor.setAttribute('aria-pressed', String(aberto));
+    const rotulo = interruptor.querySelector('[data-detalhes-rotulo]');
+    if (rotulo) rotulo.textContent = aberto ? 'Fechar detalhes' : 'Abrir detalhes';
+  }
+
+  // Aplica a preferência salva ao conteúdo recém-carregado (inclusive depois de
+  // uma navegação parcial, em que a página não recarrega).
+  function applyPatientDetails(escopo) {
+    const raiz = escopo || document;
+    if (!raiz.querySelector('[data-detalhes-alvo]')) return;
+    const aberto = localStorage.getItem(CHAVE_DETALHES) === 'true';
+    raiz.querySelectorAll('[data-detalhes-alvo]').forEach((gatilho) => {
+      mostrarDetalhe(gatilho, aberto);
+    });
+    sincronizarInterruptor(raiz, aberto);
+  }
+
+  window.applyPatientDetails = applyPatientDetails;
+  document.addEventListener('DOMContentLoaded', () => applyPatientDetails());
+
+  document.addEventListener('click', (event) => {
+    const gatilho = event.target.closest('[data-detalhes-alvo]');
+    if (gatilho) {
+      mostrarDetalhe(gatilho, gatilho.getAttribute('aria-expanded') !== 'true');
+      return;
+    }
+
+    const interruptor = event.target.closest('[data-detalhes-todos]');
+    if (!interruptor) return;
+    const aberto = interruptor.getAttribute('aria-pressed') !== 'true';
+    localStorage.setItem(CHAVE_DETALHES, String(aberto));
+    document.querySelectorAll('[data-detalhes-alvo]').forEach((alvo) => {
+      mostrarDetalhe(alvo, aberto);
+    });
+    sincronizarInterruptor(document, aberto);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Diálogos simples da página: [data-dialog-open="id"] abre, [data-dialog-close]
+  // fecha, Escape e clique no fundo também. O markup vive no template e usa as
+  // mesmas classes .filter-dialog dos outros modais, então a transição e o
+  // travamento do scroll saem iguais. Diálogo novo não precisa de JS novo —
+  // basta o id.
+  // ---------------------------------------------------------------------------
+  function abrirDialogo(id) {
+    const dialog = document.getElementById(id);
+    if (!dialog) return;
+    dialog.hidden = false;
+    dialog.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('confirm-dialog-open');
+    requestAnimationFrame(() => dialog.classList.add('is-visible'));
+    dialog.querySelector('select, input:not([type=hidden]), button')?.focus();
+  }
+
+  function fecharDialogos() {
+    document.querySelectorAll('[data-dialog].is-visible').forEach((dialog) => {
+      dialog.classList.remove('is-visible');
+      dialog.hidden = true;
+      dialog.setAttribute('aria-hidden', 'true');
+    });
+    document.body.classList.remove('confirm-dialog-open');
+  }
+
+  document.addEventListener('click', (event) => {
+    const gatilho = event.target.closest('[data-dialog-open]');
+    if (gatilho) {
+      event.preventDefault();
+      abrirDialogo(gatilho.dataset.dialogOpen);
+      return;
+    }
+    if (event.target.closest('[data-dialog-close]')) fecharDialogos();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') fecharDialogos();
+  });
+
+  // O POST é levado pelo smooth-navigation; o diálogo some com o conteúdo
+  // antigo, então só o scroll precisa ser destravado.
+  document.addEventListener('submit', (event) => {
+    if (event.target.closest('[data-dialog]')) {
+      document.body.classList.remove('confirm-dialog-open');
+    }
+  });
+
+  // ---------------------------------------------------------------------------
   // Seleção em massa (lista de pacientes) — os checkboxes das linhas pertencem
   // ao form #bulk-form via form=""; a barra aparece quando há seleção.
   // ---------------------------------------------------------------------------
