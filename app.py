@@ -294,6 +294,38 @@ def tipo_imovel_de(casa):
         return "domicilio"
 
 
+def _coluna(linha, nome):
+    """Valor da coluna, ou None se a consulta não a trouxe. As linhas chegam
+    ora de `casas`, ora de `pacientes` com JOIN — nem toda consulta seleciona
+    as mesmas colunas."""
+    try:
+        return linha[nome]
+    except (IndexError, KeyError, TypeError):
+        return None
+
+
+def rotulo_casa(linha):
+    """Identidade da casa em uma string: "Casa 7 · Quadra 13".
+
+    A numeração recomeça a cada quadra (`get_next_house_number` conta por
+    quadra, e não há índice único global), então o número sozinho não
+    identifica casa nenhuma — existe uma Casa 7 em cada quadra do território.
+    Onde o operador ESCOLHE uma casa (transferência, seletor do cadastro),
+    número solto é erro de dado esperando acontecer.
+
+    A quadra ausente vira "Sem quadra", nunca silêncio: omitir apagava a
+    diferença entre "esta casa não tem quadra" e "a tela não mostra a quadra".
+    Um lugar só para essa regra — repetir o condicional em cada template foi
+    justamente como as telas se desencontraram.
+    """
+    numero = _coluna(linha, "numero_casa")
+    if numero in (None, ""):
+        return ""
+    quadra = _coluna(linha, "numero_quadra")
+    sufixo = f"Quadra {quadra}" if quadra not in (None, "") else "Sem quadra"
+    return f"Casa {numero} · {sufixo}"
+
+
 CONDICOES_SAUDE_OPCOES = [
     {"codigo": "gestante", "label": "Está gestante"},
     {"codigo": "abaixo_peso", "label": "Abaixo do peso"},
@@ -1128,6 +1160,7 @@ app.add_template_filter(status_paciente_de, "status_codigo")
 app.add_template_filter(status_casa_de, "status_casa")
 app.add_template_filter(casa_esta_ativa, "casa_ativa")
 app.add_template_filter(localizacao_de, "localizacao")
+app.add_template_filter(rotulo_casa, "casa_rotulo")
 
 
 @app.context_processor
@@ -1920,7 +1953,18 @@ def editar_paciente(paciente_id):
         flash("Paciente não encontrado.", "warning")
         return redirect(url_for("index"))
 
-    casa = conn.execute("SELECT * FROM casas WHERE id = ?", (paciente["casa_id"],)).fetchone()
+    # A quadra vem junto: o cabeçalho identifica a casa por "Casa 7 · Quadra
+    # 14", e sem o JOIN o rótulo cairia num "Sem quadra" silenciosamente
+    # errado — pior do que não mostrar, porque afirma o contrário do que é.
+    casa = conn.execute(
+        """
+        SELECT casas.*, quadras.numero_quadra
+        FROM casas
+        LEFT JOIN quadras ON quadras.id = casas.quadra_id
+        WHERE casas.id = ?
+        """,
+        (paciente["casa_id"],),
+    ).fetchone()
 
     if request.method == "POST":
         nome = request.form.get("nome", "").strip()
@@ -2378,8 +2422,16 @@ def transferir_paciente(paciente_id):
         )
         return redirect(destino_url)
 
+    # Com a quadra: a confirmação é onde o operador confere se o morador foi
+    # para a casa que ele quis, e "casa 7" existe em toda quadra.
     casa_destino = conn.execute(
-        "SELECT id, numero_casa FROM casas WHERE id = ?", (casa_destino_id,)
+        """
+        SELECT casas.id, casas.numero_casa, quadras.numero_quadra
+        FROM casas
+        LEFT JOIN quadras ON quadras.id = casas.quadra_id
+        WHERE casas.id = ?
+        """,
+        (casa_destino_id,),
     ).fetchone()
     if casa_destino is None:
         conn.close()
@@ -2405,7 +2457,7 @@ def transferir_paciente(paciente_id):
         flash("A transferência não foi aplicada — o cadastro mudou nesse meio tempo.", "warning")
         return redirect(destino_url)
     flash(
-        f"{paciente['nome']} transferido para a casa {casa_destino['numero_casa']}.",
+        f"{paciente['nome']} transferido para a {rotulo_casa(casa_destino)}.",
         "success",
     )
     return redirect(destino_url)
@@ -2428,8 +2480,16 @@ def transferir_familia(casa_id):
         return redirect(url_for("detalhes_casa", casa_id=casa_id))
 
     conn = get_db_connection()
+    # Com a quadra: a confirmação é onde o operador confere se o morador foi
+    # para a casa que ele quis, e "casa 7" existe em toda quadra.
     casa_destino = conn.execute(
-        "SELECT id, numero_casa FROM casas WHERE id = ?", (casa_destino_id,)
+        """
+        SELECT casas.id, casas.numero_casa, quadras.numero_quadra
+        FROM casas
+        LEFT JOIN quadras ON quadras.id = casas.quadra_id
+        WHERE casas.id = ?
+        """,
+        (casa_destino_id,),
     ).fetchone()
     conn.close()
     if casa_destino is None:
@@ -2459,7 +2519,7 @@ def transferir_familia(casa_id):
         return redirect(url_for("detalhes_casa", casa_id=casa_id))
 
     flash(
-        f"{transferidos} morador(es) transferido(s) para a casa {casa_destino['numero_casa']}.",
+        f"{transferidos} morador(es) transferido(s) para a {rotulo_casa(casa_destino)}.",
         "success",
     )
     return redirect(url_for("detalhes_casa", casa_id=casa_destino_id))

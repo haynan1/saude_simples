@@ -7,7 +7,7 @@
   {% if casa %}
     <a href="{{ url_for('detalhes_casa', casa_id=casa.id) }}" class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline mb-2">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-      Casa {{ casa.numero_casa }}
+      {{ casa|casa_rotulo }}
     </a>
   {% else %}
     <a href="{{ url_for('listar_pacientes') }}" class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline mb-2">

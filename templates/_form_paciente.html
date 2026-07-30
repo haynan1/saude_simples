@@ -15,7 +15,7 @@
           <option value="">Sem casa — definir depois pela lista</option>
           {% for opcao in casas_opcoes %}
             <option value="{{ opcao.id }}" {% if casa_id_selecionada == opcao.id|string %}selected{% endif %}>
-              Casa {{ opcao.numero_casa }}{% if opcao.numero_quadra %} · Quadra {{ opcao.numero_quadra }}{% endif %} — {{ opcao.endereco }}
+              {{ opcao|casa_rotulo }} — {{ opcao.endereco }}
             </option>
           {% endfor %}
         </select>

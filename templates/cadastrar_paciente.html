@@ -6,7 +6,7 @@
 <div class="mb-6">
   <a href="{{ url_for('detalhes_casa', casa_id=casa.id) }}" class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline mb-2">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-    Casa {{ casa.numero_casa }}
+    {{ casa|casa_rotulo }}
   </a>
   <h1 class="text-2xl font-bold tracking-tight text-slate-900">Cadastrar paciente</h1>
   <p class="text-sm text-slate-500 mt-1">{{ casa.endereco }}</p>

@@ -93,7 +93,7 @@
                 {% if status_busca != 'ativo' %}{{ badge_status(status_busca) }}{% endif %}
               </div>
               {% if paciente.casa_id %}
-                <p class="text-xs text-slate-500">Casa {{ paciente.numero_casa }}{% if paciente.numero_quadra %} · Quadra {{ paciente.numero_quadra }}{% endif %}{% if paciente.endereco %} · {{ paciente.endereco }}{% endif %}</p>
+                <p class="text-xs text-slate-500">{{ paciente|casa_rotulo }}{% if paciente.endereco %} · {{ paciente.endereco }}{% endif %}</p>
               {% else %}
                 <p class="text-xs text-slate-500">Sem casa definida — vincule pela página Pacientes.</p>
               {% endif %}
@@ -182,7 +182,7 @@
               <form class="ml-auto" method="post"
                     action="{{ url_for('excluir_casa', casa_id=casa.id) }}"
                     data-confirm="Excluir esta casa e todos os pacientes vinculados?"
-                    data-confirm-title="Excluir casa {{ casa.numero_casa }}?">
+                    data-confirm-title="Excluir {{ casa|casa_rotulo }}?">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="btn-danger-outline house-tile-btn" type="submit" title="Excluir casa">Excluir</button>
               </form>

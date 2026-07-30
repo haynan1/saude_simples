@@ -86,7 +86,10 @@ def test_casas_listadas_em_ordem_de_numeracao(logged_client):
 
     body = logged_client.get("/").get_data(as_text=True)
     secao_casas = body.split("Cadastrar casa")[1].split("Quadras")[0]
-    numeros = [int(n) for n in re.findall(r"Casa (\d+)", secao_casas)]
+    # Ancorado no título do cartão: "Casa N" aparece também na confirmação de
+    # exclusão ("Excluir Casa N · Quadra Q?"), e contar as duas contava cada
+    # casa duas vezes — o que se quer aferir aqui é a ordem dos cartões.
+    numeros = [int(n) for n in re.findall(r'text-slate-900">Casa (\d+)</h3>', secao_casas)]
     assert numeros == sorted(numeros)
     assert numeros == [2, 5, 9]
     # Listas longas rolam dentro do cartão em vez de esticar a página.
@@ -105,7 +108,8 @@ def test_casas_ordenacao_decrescente(logged_client):
     def numeros_de(query):
         body = logged_client.get(query).get_data(as_text=True)
         secao = body.split("Cadastrar casa")[1].split("Quadras")[0]
-        return [int(n) for n in re.findall(r"Casa (\d+)", secao)]
+        # Título do cartão, não qualquer "Casa N" (ver nota acima).
+        return [int(n) for n in re.findall(r'text-slate-900">Casa (\d+)</h3>', secao)]
 
     assert numeros_de("/?ordem=desc") == [9, 5, 2]
     assert numeros_de("/?ordem=asc") == [2, 5, 9]
@@ -125,7 +129,7 @@ def test_ordenacao_preserva_filtro_ativo(logged_client):
     secao = body.split("Cadastrar casa")[1].split("Quadras")[0]
     import re
 
-    assert [int(n) for n in re.findall(r"Casa (\d+)", secao)] == [3, 2]
+    assert [int(n) for n in re.findall(r'text-slate-900">Casa (\d+)</h3>', secao)] == [3, 2]
     # O botão exibe o estado atual e o link do filtro leva ordem junto.
     assert "Decrescente" in body
     assert 'name="ordem" value="desc"' in body
