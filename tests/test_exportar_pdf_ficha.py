@@ -5,7 +5,7 @@ A grade de cinco colunas anterior obrigava o relatório a preencher toda célula
 do e-SUS. Estes testes travam o comportamento que substituiu isso.
 """
 import app
-from tests.conftest import criar_casa, criar_paciente, texto_pdf
+from tests.conftest import criar_casa, criar_paciente, criar_quadra, texto_pdf
 
 
 def ficha_lida(client):
@@ -111,3 +111,56 @@ def test_casa_longa_repete_o_cabecalho_ao_virar_a_pagina(logged_client):
     assert "40 pacientes" in texto
     assert "MORADOR 39 DA CASA CHEIA" in texto
     assert texto.count("Rua da Casa Cheia, 500") >= 2
+
+
+# ---------------------------------------------------------------------------
+# Quadra no cabeçalho da casa
+# ---------------------------------------------------------------------------
+def test_cabecalho_da_casa_diz_a_quadra(logged_client):
+    """A numeração de casa recomeça a cada quadra, então o número sozinho não
+    identifica casa nenhuma: o cabeçalho tem de carregar a quadra junto."""
+    criar_quadra(logged_client, numero="13")
+    criar_casa(logged_client, endereco="Rua das Flores, 42", numero="42", quadra_id="1")
+    criar_paciente(logged_client, nome="MORADOR DA QUADRA TREZE")
+
+    texto = ficha_lida(logged_client)
+    assert "Casa Nº 42 · Quadra Nº 13" in texto
+
+
+def test_casa_sem_quadra_diz_no_cabecalho(logged_client):
+    criar_casa(logged_client, endereco="Rua B, 9", numero="9")
+    criar_paciente(logged_client, nome="MORADOR SEM QUADRA")
+    assert "Casa Nº 9 · Sem quadra" in ficha_lida(logged_client)
+
+
+def test_mesmo_numero_de_casa_em_quadras_diferentes_se_distingue(logged_client):
+    """Duas casas Nº 7 em quadras diferentes é o caso normal do território —
+    no PDF elas não podem virar a mesma linha."""
+    criar_quadra(logged_client, numero="1")
+    criar_quadra(logged_client, numero="2")
+    criar_casa(logged_client, endereco="Rua A, 7", numero="7", quadra_id="1")
+    criar_casa(logged_client, endereco="Rua B, 7", numero="7", quadra_id="2")
+    criar_paciente(logged_client, casa_id=1, nome="MORADOR DA UM", cpf="11111111111")
+    criar_paciente(logged_client, casa_id=2, nome="MORADOR DA DOIS", cpf="22222222222")
+
+    texto = ficha_lida(logged_client)
+    assert "Casa Nº 7 · Quadra Nº 1" in texto
+    assert "Casa Nº 7 · Quadra Nº 2" in texto
+
+
+def test_quadra_volta_no_cabecalho_ao_virar_a_pagina(logged_client):
+    """O título do capítulo sai uma vez por quadra; o cabeçalho da casa é que
+    se repete na quebra. Sem a quadra nele, quem vira a folha perde de vista
+    em que quadra está lendo."""
+    criar_quadra(logged_client, numero="13")
+    criar_casa(logged_client, endereco="Rua da Casa Cheia, 500", numero="42", quadra_id="1")
+    for indice in range(40):
+        criar_paciente(
+            logged_client,
+            nome=f"MORADOR {indice:02d} DA CASA CHEIA",
+            cpf=str(10000000000 + indice),
+            observacao="Observação de campo para dar altura à ficha do paciente.",
+        )
+
+    texto = ficha_lida(logged_client)
+    assert texto.count("Casa Nº 42 · Quadra Nº 13") >= 2

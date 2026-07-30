@@ -3313,10 +3313,13 @@ def exportar_pdf():
             )
         return linhas
 
-    def montar_bloco_casa(titulo, subtitulo_html, lista_pacientes):
+    def montar_bloco_casa(titulo_html, subtitulo_html, lista_pacientes):
         """Cabeçalho e pacientes na mesma tabela: quando a casa atravessa a
         quebra de página, o `repeatRows` reimprime o cabeçalho — nunca aparece
-        uma lista de gente sem dizer de qual casa é."""
+        uma lista de gente sem dizer de qual casa é.
+
+        `titulo_html` chega escapado pelo chamador, como o subtítulo: o título
+        carrega marcação para recuar a quadra em corpo e tom."""
         total = len(lista_pacientes)
         if total == 0:
             contagem = "Sem pacientes"
@@ -3330,7 +3333,7 @@ def exportar_pdf():
         dados = [
             [
                 [
-                    Paragraph(xml_escape(titulo), house_style),
+                    Paragraph(titulo_html, house_style),
                     Paragraph(subtitulo_html, house_meta_style),
                 ],
                 Paragraph(contagem, house_count_style),
@@ -3437,9 +3440,18 @@ def exportar_pdf():
             href = xml_escape(mapa, {'"': "&quot;"})
             endereco_pdf += f' &nbsp;|&nbsp; <a href="{href}" color="#0b5ed7"><u>Ver no mapa</u></a>'
 
-        tabela, total = montar_bloco_casa(
-            f"Casa Nº {casa['numero_casa']}", endereco_pdf, lista_pacientes
+        # A quadra vai junto do número da casa, e não só no título do capítulo:
+        # a numeração recomeça a cada quadra (get_next_house_number conta por
+        # quadra), então "Casa Nº 12" sozinha não identifica casa nenhuma — há
+        # uma Casa 12 em cada quadra. Como o cabeçalho é a linha que o
+        # `repeatRows` reimprime, a quadra reaparece em toda página que a casa
+        # ocupar; antes, quem virasse a folha perdia o capítulo de vista.
+        # Recuada em corpo e tom: identifica sem disputar com o número da casa.
+        titulo_casa = (
+            f"Casa Nº {xml_escape(str(casa['numero_casa'] or '—'))}"
+            f' <font size="9" color="#0a58ca">· {xml_escape(quadra_label)}</font>'
         )
+        tabela, total = montar_bloco_casa(titulo_casa, endereco_pdf, lista_pacientes)
         adicionar_bloco(casa_elements, tabela, total)
         primeiro_bloco = False
 
@@ -3450,7 +3462,7 @@ def exportar_pdf():
         secao_elements.append(montar_titulo_quadra("Sem casa definida"))
         secao_elements.append(Spacer(1, 8))
         tabela, total = montar_bloco_casa(
-            "Pacientes sem casa vinculada",
+            xml_escape("Pacientes sem casa vinculada"),
             "<b>Endereço:</b> ainda não definido no sistema — vincule pela página Pacientes",
             pacientes_sem_casa,
         )
