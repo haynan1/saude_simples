@@ -177,6 +177,10 @@
       form.setAttribute('action', trigger.dataset.transferAction || '');
       const select = form.querySelector('select[name="casa_destino_id"]');
       if (select) select.value = '';
+      // Sempre reescrito, inclusive para vazio: o modal é um só na página, e um
+      // id deixado da abertura anterior transferiria a família errada.
+      const familia = form.querySelector('[data-transfer-familia]');
+      if (familia) familia.value = trigger.dataset.transferFamilia || '';
     }
     const title = dialog.querySelector('[data-transfer-title-target]');
     if (title) title.textContent = trigger.dataset.transferTitle || 'Transferir';
@@ -288,9 +292,35 @@
   // travamento do scroll saem iguais. Diálogo novo não precisa de JS novo —
   // basta o id.
   // ---------------------------------------------------------------------------
-  function abrirDialogo(id) {
+  // Numa casa repartida, um diálogo só serve todas as famílias: o botão que
+  // abre diz em qual ele opera. Sem isso seriam N diálogos idênticos no HTML,
+  // um por família — mesmo caminho já usado pelo modal de transferência.
+  function aplicarFamiliaAoDialogo(dialog, gatilho) {
+    const id = gatilho?.dataset.dialogFamilia;
+    const nome = gatilho?.dataset.dialogFamiliaNome || '';
+
+    const campo = dialog.querySelector('[data-dialog-familia-campo]');
+    if (campo) campo.value = id || '';
+
+    const alvo = dialog.querySelector('[data-dialog-familia-alvo]');
+    if (alvo && nome) alvo.textContent = `todos os moradores de ${nome}`;
+
+    const nomeCampo = dialog.querySelector('[data-dialog-familia-nome-campo]');
+    if (nomeCampo) nomeCampo.value = nome;
+
+    // O `action` é montado a partir de uma URL-modelo gerada pelo servidor com
+    // id 0 — assim a rota continua sendo de responsabilidade do url_for, e não
+    // uma string montada à mão aqui.
+    const form = dialog.querySelector('[data-dialog-familia-form]');
+    if (form && id) {
+      form.setAttribute('action', form.dataset.dialogFamiliaUrl.replace(/0(?=[^0]*$)/, id));
+    }
+  }
+
+  function abrirDialogo(id, gatilho) {
     const dialog = document.getElementById(id);
     if (!dialog) return;
+    aplicarFamiliaAoDialogo(dialog, gatilho);
     dialog.hidden = false;
     dialog.setAttribute('aria-hidden', 'false');
     document.body.classList.add('confirm-dialog-open');
@@ -311,7 +341,7 @@
     const gatilho = event.target.closest('[data-dialog-open]');
     if (gatilho) {
       event.preventDefault();
-      abrirDialogo(gatilho.dataset.dialogOpen);
+      abrirDialogo(gatilho.dataset.dialogOpen, gatilho);
       return;
     }
     if (event.target.closest('[data-dialog-close]')) fecharDialogos();

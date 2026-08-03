@@ -23,6 +23,29 @@
     </div>
   {% endif %}
 
+  {# Só na casa repartida: numa casa de família única não há escolha a fazer, e
+     um seletor de uma opção só é pergunta sem pergunta. #}
+  {% if familias %}
+    <div class="px-6 pt-6">
+      <h2 class="text-sm font-bold text-slate-900">Família</h2>
+      <p class="text-xs text-slate-500 mt-0.5">Este endereço tem mais de uma família — escolha em qual o morador entra.</p>
+    </div>
+    <div class="form-grid">
+      <div class="form-field md-span-2">
+        <label class="form-label" for="familia_id">Família do morador</label>
+        <select class="form-input" id="familia_id" name="familia_id">
+          <option value="">Sem família definida</option>
+          {% for opcao in familias %}
+            {% set escolhida = (familia_id if familia_id is defined else (paciente.familia_id if paciente else none)) %}
+            <option value="{{ opcao.id }}" {% if escolhida == opcao.id %}selected{% endif %}>
+              {{ opcao.nome }} ({{ opcao.total_pacientes }} morador{{ 'es' if opcao.total_pacientes != 1 }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  {% endif %}
+
   <div class="px-6 {{ 'pt-2' if casas_opcoes is defined else 'pt-6' }}">
     <h2 class="text-sm font-bold text-slate-900">Dados do paciente</h2>
   </div>

@@ -1,0 +1,195 @@
+{# Tabela de moradores de um grupo — a casa inteira, quando ela tem uma família
+   só, ou um núcleo familiar de cada vez, na casa repartida.
+
+   É macro porque a casa repartida desenha a mesma tabela uma vez por núcleo.
+   Repetida no template, as medidas de coluna (conferidas no navegador contra o
+   conteúdo real) passariam a existir em duas cópias, e a segunda envelheceria
+   calada. #}
+{% macro tabela_moradores(pacientes) %}
+  <div class="overflow-x-auto">
+    {# Largura fixa por coluna: em layout automático, o texto do resumo (sem
+       quebra, para poder cortar com reticências) definia a largura mínima da
+       tabela e empurrava as colunas para fora da tela. Com as medidas
+       declaradas, a coluna do nome fica com o que sobra e o resumo corta. #}
+    <table class="w-full text-sm patients-table">
+      {# Medidas conferidas no navegador contra o conteúdo real, já somando o
+         respiro lateral da célula: coluna curta demais faz o conteúdo vazar
+         por cima da vizinha, porque em layout fixo ele não empurra.
+         Ações: os cinco controles somam 317px e a célula dava 240px úteis.
+         Como o grupo alinha à direita, os 77px que sobravam vazavam para a
+         ESQUERDA e o ícone do WhatsApp caía em cima do "Ativo" da coluna
+         Situação. 22.5rem = os 317px do conteúdo + 24px de respiro lateral,
+         mais folga para variação de fonte entre máquinas. #}
+      <colgroup>
+        <col>
+        <col style="width: 8rem">
+        <col style="width: 6.5rem">
+        <col style="width: 8.5rem">
+        <col style="width: 9.5rem">
+        <col style="width: 22.5rem">
+      </colgroup>
+      <thead>
+        <tr class="bg-slate-50 text-left">
+          <th class="px-3 py-3 font-semibold text-slate-600">Nome</th>
+          <th class="px-3 py-3 font-semibold text-slate-600">CPF/CNS</th>
+          <th class="px-3 py-3 font-semibold text-slate-600">Nascimento</th>
+          <th class="px-3 py-3 font-semibold text-slate-600">Telefone</th>
+          <th class="px-3 py-3 font-semibold text-slate-600">Situação</th>
+          <th class="px-3 py-3 font-semibold text-slate-600 text-right">Ações</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for paciente in pacientes %}
+          {# Detalhe recolhido: filiação, observação e condições saem da faixa
+             cinza de três linhas e viram uma linha só sob o nome.
+             Fechada, essa linha diz o que EXISTE ali dentro — não o conteúdo.
+             Despejar o texto de verdade (medicamento, filiação) devolvia a
+             poluição que o recolhimento veio resolver: cada morador virava um
+             parágrafo de largura diferente e a tabela deixava de ser tabela.
+             O sinal é curto e tem a mesma forma em toda linha, então o olho
+             desce pela coluna em vez de ler. O conteúdo está a um clique. #}
+          {% set condicoes = paciente.condicoes_saude|condicoes_lista %}
+          {% set filiacao = [] %}
+          {% if paciente.nome_pai %}{% set _ = filiacao.append('Pai: ' ~ paciente.nome_pai) %}{% endif %}
+          {% if paciente.nome_mae %}{% set _ = filiacao.append('Mãe: ' ~ paciente.nome_mae) %}{% endif %}
+          {% set sinais = [] %}
+          {% if condicoes %}{% set _ = sinais.append('1 condição' if condicoes|length == 1 else condicoes|length ~ ' condições') %}{% endif %}
+          {% if paciente.observacao %}{% set _ = sinais.append('observação') %}{% endif %}
+          {% if filiacao %}{% set _ = sinais.append('filiação') %}{% endif %}
+          {% set resumo = sinais|join(' · ') %}
+          <tr class="table-row hover:bg-slate-50">
+            <td class="px-3 py-3 font-semibold text-slate-900">{{ paciente.nome }}</td>
+            <td class="px-3 py-3 whitespace-nowrap text-slate-600">{{ paciente.cpf|cpf_cns }}</td>
+            <td class="px-3 py-3 whitespace-nowrap text-slate-600">{{ paciente.data_nascimento|data_br }}</td>
+            <td class="px-3 py-3 whitespace-nowrap text-slate-600">{{ paciente.telefone|telefone }}</td>
+            <td class="px-3 py-3 whitespace-nowrap">
+              {# Mesmo menu da página Pacientes: mudou a situação, a linha sai
+                 da tabela e reaparece em "Registros guardados", logo abaixo. #}
+              <form method="post" action="{{ url_for('alterar_status_paciente', paciente_id=paciente.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <select class="status-select status-select--ativo" name="status" data-submit-on-change
+                        aria-label="Situação de {{ paciente.nome }}" title="Mudar a situação de {{ paciente.nome }}">
+                  {% for opcao in opcoes_status_paciente %}
+                    <option value="{{ opcao.codigo }}" {% if opcao.codigo == 'ativo' %}selected{% endif %}>{{ opcao.label }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            </td>
+            <td class="px-3 py-3">
+              <div class="flex items-center justify-end gap-1.5" role="group" aria-label="Ações do paciente {{ paciente.nome }}">
+                {% if paciente.telefone %}
+                  <a
+                    class="btn-secondary house-tile-btn"
+                    href="{{ paciente.telefone|whatsapp }}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="WhatsApp de {{ paciente.nome }}"
+                    aria-label="WhatsApp de {{ paciente.nome }}"
+                  >
+                    <svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91S17.5 2 12.04 2Zm0 18.15c-1.48 0-2.93-.4-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.83c0 4.54-3.69 8.23-8.23 8.23Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.24-.64.8-.79.97-.14.16-.29.18-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.13-.15.17-.25.25-.42.08-.16.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.42h-.48c-.16 0-.43.06-.65.31-.22.24-.86.84-.86 2.05 0 1.21.88 2.38 1 2.54.12.16 1.73 2.64 4.19 3.7.59.25 1.04.4 1.4.52.59.19 1.12.16 1.54.1.47-.07 1.47-.6 1.68-1.18.21-.58.21-1.08.14-1.18-.06-.11-.22-.17-.47-.29Z"/></svg>
+                  </a>
+                {% endif %}
+                {# Um dado por linha: o texto copiado é colado em prontuário,
+                   WhatsApp e formulário do e-SUS — tudo lê melhor em bloco do
+                   que numa tira só. `select` derruba o campo em branco, para
+                   não colar "Telefone:" sem telefone. #}
+                {% set cpf_copia = paciente.cpf|cpf_cns %}
+                {% set nascimento_copia = paciente.data_nascimento|data_br %}
+                {% set telefone_copia = paciente.telefone|telefone %}
+                {% set dados_copia = [
+                     'Nome: ' ~ paciente.nome,
+                     ('CPF/CNS: ' ~ cpf_copia) if cpf_copia else '',
+                     ('Nascimento: ' ~ nascimento_copia) if nascimento_copia else '',
+                     ('Telefone: ' ~ telefone_copia) if telefone_copia else '',
+                   ] %}
+                <button
+                  class="btn-secondary house-tile-btn"
+                  type="button"
+                  title="Copiar dados de {{ paciente.nome }}"
+                  aria-label="Copiar dados de {{ paciente.nome }}"
+                  data-copy="{{ (dados_copia|select|join('\n'))|e }}"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+                </button>
+                <button
+                  class="btn-secondary house-tile-btn"
+                  type="button"
+                  data-transfer-open
+                  data-transfer-action="{{ url_for('transferir_paciente', paciente_id=paciente.id) }}"
+                  data-transfer-title="Transferir {{ paciente.nome }}"
+                  title="Transferir {{ paciente.nome }} para outra casa"
+                  aria-label="Transferir {{ paciente.nome }} para outra casa"
+                >Transferir</button>
+                <a
+                  class="btn-secondary house-tile-btn"
+                  href="{{ url_for('editar_paciente', paciente_id=paciente.id) }}"
+                  title="Editar {{ paciente.nome }}"
+                  aria-label="Editar {{ paciente.nome }}"
+                >Editar</a>
+                <form
+                  method="post"
+                  action="{{ url_for('excluir_paciente', paciente_id=paciente.id) }}"
+                  data-confirm="O cadastro vai para a Lixeira e pode ser restaurado por 30 dias."
+                  data-confirm-title="Excluir {{ paciente.nome }}?"
+                >
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button
+                    class="btn-danger-outline house-tile-btn"
+                    type="submit"
+                    title="Excluir {{ paciente.nome }}"
+                    aria-label="Excluir {{ paciente.nome }}"
+                  >Excluir</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% if resumo %}
+            {# A linha ocupa a largura inteira da tabela: dentro da célula do
+               nome ela esticava a coluna e empurrava as outras para fora da
+               tela. #}
+            <tr class="patient-summary-row">
+              <td colspan="6" class="px-3">
+                <button
+                  type="button"
+                  class="patient-summary"
+                  data-detalhes-alvo="detalhes-{{ paciente.id }}"
+                  aria-expanded="false"
+                  aria-controls="detalhes-{{ paciente.id }}"
+                  title="Condições, observação e filiação de {{ paciente.nome }}"
+                >
+                  <svg class="patient-summary-caret" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                  <span class="patient-summary-texto">
+                    <span class="patient-summary-rotulo">Detalhes</span>
+                    <span class="patient-summary-sinais">{{ resumo }}</span>
+                  </span>
+                  <span class="patient-summary-fechar">Fechar detalhes</span>
+                </button>
+              </td>
+            </tr>
+            <tr id="detalhes-{{ paciente.id }}" class="patient-detalhes" hidden>
+              <td colspan="6" class="px-3 pb-3 pt-0 bg-slate-50">
+                {# Medida, respiro e tamanho da pílula moram no app.css, como
+                   o resto deste bloco recolhível: uma classe de componente no
+                   lugar de seis utilitárias, e o tamanho da fonte deixa de ser
+                   valor arbitrário no meio do markup. #}
+                {% if condicoes %}
+                  <div class="patient-detalhes-condicoes">
+                    {% for condicao in condicoes %}
+                      <span class="patient-detalhes-chip">{{ condicao }}</span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                {% if paciente.observacao %}
+                  <p class="patient-detalhes-linha text-slate-600"><span class="font-bold text-slate-700">Obs:</span> {{ paciente.observacao }}</p>
+                {% endif %}
+                {% if filiacao %}
+                  <p class="patient-detalhes-linha text-slate-500">{{ filiacao|join(' · ') }}</p>
+                {% endif %}
+              </td>
+            </tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+{% endmacro %}

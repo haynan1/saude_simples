@@ -291,6 +291,39 @@ def init_db():
         # Link do mapa (Google Maps, OSM...) apontando a casa. Opcional: o
         # endereço escrito continua sendo a informação obrigatória.
         conn.execute("ALTER TABLE casas ADD COLUMN localizacao TEXT")
+    # Núcleo familiar dentro do domicílio — o mesmo recorte da ficha de cadastro
+    # domiciliar do e-SUS, onde o bloco "núcleo familiar" se repete dentro de um
+    # domicílio só. Cobre as duas realidades de campo: dois núcleos partilhando
+    # a mesma moradia, e as duas construções do mesmo lote ("frente" e "fundos"),
+    # que têm um endereço só e duas famílias.
+    #
+    # É agrupamento DENTRO da casa, e não uma segunda casa no mesmo endereço:
+    # guardar o endereço em dois cadastros faz os dois divergirem no dia em que
+    # a rua for corrigida num deles só.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS familias (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            casa_id INTEGER NOT NULL,
+            nome TEXT NOT NULL,
+            criada_em TEXT NOT NULL,
+            FOREIGN KEY(casa_id) REFERENCES casas(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_familias_casa ON familias(casa_id)")
+    if "familia_id" not in columns:
+        # NULL = morador da casa sem núcleo declarado, que é o estado de todo o
+        # legado e continua sendo o normal da casa de uma família só. O núcleo
+        # só passa a existir quando o operador acrescenta o segundo.
+        #
+        # ON DELETE SET NULL, nunca CASCADE: apagar um núcleo não pode apagar
+        # gente. Quem perde o núcleo continua morando na casa.
+        conn.execute(
+            "ALTER TABLE pacientes ADD COLUMN familia_id INTEGER"
+            " REFERENCES familias(id) ON DELETE SET NULL"
+        )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pacientes_familia ON pacientes(familia_id)")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS configuracao (
@@ -322,6 +355,14 @@ def init_db():
         )
         """
     )
+    lixeira_columns = [
+        row["name"] for row in conn.execute("PRAGMA table_info(lixeira_pacientes)").fetchall()
+    ]
+    if "familia_id" not in lixeira_columns:
+        # Sem FK, pela mesma razão de casa_id: o núcleo pode ser desfeito
+        # enquanto o registro espera na lixeira. Quem restaura confere se o
+        # núcleo ainda existe naquela casa antes de reatar o vínculo.
+        conn.execute("ALTER TABLE lixeira_pacientes ADD COLUMN familia_id INTEGER")
     # Perfil epidemiológico: fotografia mensal dos indicadores do território.
     # O mês corrente é reescrito (upsert) enquanto o sistema é usado; quando o
     # mês vira, o último retrato congela como histórico. JSON de propósito:

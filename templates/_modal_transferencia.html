@@ -8,11 +8,17 @@
     <form method="post" action="" data-transfer-form>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+      {# Preenchido pelo botão que abriu. Vazio = a casa inteira, que é o caso
+         da casa de família única e o do "Transferir família" do menu do topo. #}
+      <input type="hidden" name="familia_id" data-transfer-familia value="">
       <header class="filter-dialog-head">
         <div>
           <p class="filter-dialog-kicker">Transferência</p>
           <h2 id="transfer-dialog-title" class="filter-dialog-title" data-transfer-title-target>Transferir</h2>
-          <p class="filter-dialog-sub">Escolha a casa de destino — o endereço do cadastro muda e o morador passa a contar nela.</p>
+          <p class="filter-dialog-sub">
+            Escolha o destino. Mudando de casa, o endereço do cadastro muda junto e o morador
+            passa a contar nela; mudando de família no mesmo endereço, muda só o núcleo.
+          </p>
         </div>
         <button type="button" class="a11y-close" data-transfer-close aria-label="Fechar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -24,12 +30,29 @@
       <div class="filter-dialog-body">
         {% if casas_destino %}
           <label class="form-label" for="casa_destino_id">Casa de destino</label>
+          {# Endereço de duas famílias rende uma opção por núcleo: quem se muda
+             para lá já chega na família certa, em vez de o agente transferir e
+             depois abrir a casa de destino para alocar o morador. O valor
+             carrega "casa" ou "casa:família" — um controle só.
+
+             Lista plana, com a casa repetida em cada opção, e não <optgroup>:
+             fechado, o <select> mostra só o texto da opção escolhida, e "Frente"
+             sozinho não diz de qual endereço é. Onde o operador ESCOLHE uma
+             casa, identidade parcial é erro de dado esperando acontecer — é a
+             mesma razão do `rotulo_casa`. Agrupar é conforto; acertar o destino
+             de um morador, não. #}
           <select class="form-input" name="casa_destino_id" id="casa_destino_id" required>
             <option value="">Selecione a casa</option>
             {% for casa in casas_destino %}
-              <option value="{{ casa.id }}">
-                {{ casa|casa_rotulo }} — {{ casa.endereco }}{% if not casa|casa_ativa %} (imóvel inativo){% endif %}
-              </option>
+              {% set rotulo = casa|casa_rotulo ~ ' — ' ~ casa.endereco ~ (' (imóvel inativo)' if not casa|casa_ativa else '') %}
+              {% if casa.familias %}
+                {% for familia in casa.familias %}
+                  <option value="{{ casa.id }}:{{ familia.id }}">{{ rotulo }} · {{ familia.nome }}</option>
+                {% endfor %}
+                <option value="{{ casa.id }}">{{ rotulo }} · sem família definida</option>
+              {% else %}
+                <option value="{{ casa.id }}">{{ rotulo }}</option>
+              {% endif %}
             {% endfor %}
           </select>
         {% else %}

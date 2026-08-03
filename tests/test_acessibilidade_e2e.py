@@ -90,6 +90,26 @@ def _povoar():
         " '31520170149', '1961-01-27', '6496091751', 'ALTIVA', 'obs de campo',"
         " 'hipertensao', 'ativo')"
     )
+    # Casa repartida em famílias: o cabeçalho do núcleo, a contagem e o grupo
+    # "sem família" são marcação que só existe aqui — sem repartir, nenhuma rota
+    # da lista os pinta, e o contraste deles nunca seria medido.
+    conn.execute(
+        "INSERT INTO familias (id, casa_id, nome, criada_em)"
+        " VALUES (1, 1, 'Frente', '2026-01-01T00:00:00'),"
+        "        (2, 1, 'Fundos', '2026-01-01T00:00:01')"
+    )
+    conn.execute("UPDATE pacientes SET familia_id = 1 WHERE id = 1")
+    conn.execute(
+        "INSERT INTO pacientes (id, casa_id, familia_id, nome, cpf, data_nascimento,"
+        " status) VALUES (2, 1, 2, 'JOAO DO FUNDO', '70904240108', '1988-09-03', 'ativo')"
+    )
+    # Óbito: sai da tela da casa e deixa no lugar a linha que diz onde o
+    # cadastro está. Sem um registro assim, essa linha não é pintada em rota
+    # nenhuma e o contraste dela nunca seria medido.
+    conn.execute(
+        "INSERT INTO pacientes (id, casa_id, familia_id, nome, data_nascimento, status)"
+        " VALUES (3, 1, 1, 'AVO BENEDITA', '1931-05-12', 'obito')"
+    )
     conn.commit()
     conn.close()
 

@@ -361,7 +361,71 @@ def test_selects_do_filtro_tem_rotulo_acessivel(logged_client):
     _territorio_com_ocupacao(logged_client)
     body = logged_client.get("/").get_data(as_text=True)
     assert 'for="filtro-ocupacao"' in body and 'id="filtro-ocupacao"' in body
+    assert 'for="filtro-situacao"' in body and 'id="filtro-situacao"' in body
     assert 'for="filtro-quadra"' in body and 'id="filtro-quadra"' in body
+
+
+# ---------------------------------------------------------------------------
+# Filtro por situação do imóvel
+#
+# Vale para qualquer tipo (domicílio, loja, terreno). É recorte separado do de
+# ocupação: "vazias" e "com moradores" só falam de imóvel acompanhado, então sem
+# este o inativo não tinha como ser listado sozinho.
+# ---------------------------------------------------------------------------
+def _territorio_com_inativa(logged_client):
+    criar_casa(logged_client, endereco="Casa Ativa", numero="1")
+    criar_casa(logged_client, endereco="Casa Inativada", numero="2")
+    logged_client.post(
+        "/casa/nova",
+        data={"endereco": "Loja Inativada", "numero_casa": "3", "quadra_id": "",
+              "tipo_imovel": "loja"},
+    )
+    logged_client.post("/casa/2/situacao", data={"status": "inativa"})
+    logged_client.post("/casa/3/situacao", data={"status": "inativa"})
+
+
+def test_filtro_de_imoveis_inativados(logged_client):
+    """É por esta lista que se reativa um cadastro — sem ela, o imóvel inativo
+    só era alcançável rolando a lista inteira."""
+    _territorio_com_inativa(logged_client)
+    body = logged_client.get("/?situacao=inativas").get_data(as_text=True)
+    assert "Casa Inativada" in body
+    assert "Loja Inativada" in body     # vale para qualquer tipo de imóvel
+    assert "Casa Ativa" not in body
+
+
+def test_filtro_de_imoveis_ativos(logged_client):
+    _territorio_com_inativa(logged_client)
+    body = logged_client.get("/?situacao=ativas").get_data(as_text=True)
+    assert "Casa Ativa" in body
+    assert "Casa Inativada" not in body
+
+
+def test_contagens_de_situacao_no_modal(logged_client):
+    _territorio_com_inativa(logged_client)
+    body = logged_client.get("/").get_data(as_text=True)
+    assert "Ativos — acompanhados pela equipe (1)" in body
+    assert "Inativados — fora das contagens (2)" in body
+
+
+def test_situacao_invalida_ignorada(logged_client):
+    _territorio_com_inativa(logged_client)
+    body = logged_client.get("/?situacao=demolida").get_data(as_text=True)
+    assert "3 cadastrada(s)" in body
+    assert "filtro ativo" not in body
+
+
+def test_situacao_combina_com_tipo(logged_client):
+    _territorio_com_inativa(logged_client)
+    body = logged_client.get("/?situacao=inativas&tipo=loja").get_data(as_text=True)
+    assert "Loja Inativada" in body
+    assert "Casa Inativada" not in body
+
+
+def test_situacao_sobrevive_a_troca_de_ordem(logged_client):
+    _territorio_com_inativa(logged_client)
+    body = logged_client.get("/?situacao=inativas").get_data(as_text=True)
+    assert "situacao=inativas" in body   # o link de ordem carrega o recorte junto
 
 
 def test_numeracao_automatica_por_quadra(logged_client):

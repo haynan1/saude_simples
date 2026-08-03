@@ -460,6 +460,21 @@ OCUPACAO_FILTROS = {
 }
 
 
+def casa_esta_inativa(casa):
+    return not casa_esta_ativa(casa)
+
+
+# Recorte por situação do imóvel — vale para qualquer tipo (domicílio, loja,
+# terreno). É recorte separado do de ocupação de propósito: "vazias" e "com
+# moradores" só falam de imóvel acompanhado, então sem este filtro o imóvel
+# inativo não tinha como ser listado sozinho — e é justamente pela lista dele
+# que se reativa um cadastro.
+SITUACAO_CASA_FILTROS = {
+    "ativas": casa_esta_ativa,
+    "inativas": casa_esta_inativa,
+}
+
+
 def localizacao_de(casa):
     """Link do mapa pronto para virar href — na tela e no PDF.
 
@@ -507,6 +522,11 @@ def get_quadras():
     return quadras
 
 
+# Maior inteiro que o SQLite aceita como parâmetro. Acima disso o driver levanta
+# OverflowError — e todo id daqui vira parâmetro de consulta logo em seguida.
+SQLITE_INTEIRO_MAXIMO = 2**63 - 1
+
+
 def parse_positive_int(value, field_name, required=True):
     value = str(value or "").strip()
     if not value:
@@ -521,6 +541,12 @@ def parse_positive_int(value, field_name, required=True):
 
     if number < 1:
         return None, f"{field_name.capitalize()} deve ser maior que zero."
+    # Teto de 64 bits: estes números viram parâmetro de consulta, e o SQLite
+    # recusa inteiro maior que isso com OverflowError. Sem o corte, um id
+    # absurdo na querystring não daria "não encontrado" — daria 500. Nenhum id
+    # real chega perto do teto, então recusar acima dele não perde nada.
+    if number > SQLITE_INTEIRO_MAXIMO:
+        return None, f"{field_name.capitalize()} não é um valor válido."
     return number, None
 
 
@@ -1090,9 +1116,10 @@ def carregar_dados_relatorio(condicoes_selecionadas=None, filtro_sem_selecao=Fal
     # por cima (id, status) e o relatório passaria a ler a casa como paciente.
     pacientes = conn.execute(
         f"""
-        SELECT pacientes.*
+        SELECT pacientes.*, familias.nome AS familia_nome
         FROM pacientes
         LEFT JOIN casas ON casas.id = pacientes.casa_id
+        LEFT JOIN familias ON familias.id = pacientes.familia_id
         WHERE {SQL_PACIENTE_ATIVO} AND {SQL_CASA_ATIVA}
         ORDER BY pacientes.nome
         """
@@ -1154,6 +1181,29 @@ PERFIL_LINHAS = [
 ]
 
 
+def contar_familias(casas, pacientes):
+    """Núcleos familiares com pelo menos um morador ativo.
+
+    A casa de família única conta 1, como sempre contou — é o caso de quase
+    todo o território, e o número não se mexe por causa desta função. A casa
+    repartida passa a contar quantos núcleos ela de fato abriga: é o que
+    "famílias cadastradas" sempre quis dizer, e o que a equipe reporta.
+
+    Casa sem morador ativo não conta nenhuma: casa vazia não é família."""
+    com_nucleo = set()
+    casas_repartidas = set()
+    for paciente in pacientes:
+        familia_id = _coluna(paciente, "familia_id")
+        if familia_id:
+            com_nucleo.add(familia_id)
+            casas_repartidas.add(paciente["casa_id"])
+    # A casa repartida conta pelos núcleos; a não repartida, por ela mesma.
+    sem_reparticao = sum(
+        1 for casa in casas if casa["total_pacientes"] > 0 and casa["id"] not in casas_repartidas
+    )
+    return len(com_nucleo) + sem_reparticao
+
+
 def calcular_perfil_epidemiologico():
     """Retrato atual dos indicadores do território, separados por sexo."""
     casas, pacientes = carregar_dados_relatorio()
@@ -1168,8 +1218,7 @@ def calcular_perfil_epidemiologico():
         return por_sexo(lambda p: codigo in listar_condicao_codigos(p["condicoes_saude"]))
 
     return {
-        # Família = casa com pelo menos um morador ativo (casa vazia não conta).
-        "familias": sum(1 for casa in casas if casa["total_pacientes"] > 0),
+        "familias": contar_familias(casas, pacientes),
         "pessoas": por_sexo(lambda p: True),
         "hipertensos": por_condicao("hipertensao"),
         "diabeticos": por_condicao("diabetes"),
@@ -1357,7 +1406,15 @@ def get_casas_para_transferencia(excluir_casa_id=None):
 
     Imóvel inativo continua na lista, marcado: mudar-se para o lar de idosos
     que a equipe não acompanha é justamente um destino real — e a transferência
-    é o que tira o morador das contagens sem apagar o cadastro."""
+    é o que tira o morador das contagens sem apagar o cadastro.
+
+    Cada casa leva junto os núcleos dela. Quem se muda para um endereço de duas
+    famílias já chega na família certa: sem isso, o agente transferia e depois
+    tinha de abrir a casa de destino e editar o morador para alocá-lo — dois
+    passos para uma decisão que ele já tinha tomado.
+
+    Uma consulta para as casas e uma para os núcleos, agrupados em memória: uma
+    consulta por casa seria N+1 numa lista que a tela mostra inteira."""
     conn = get_db_connection()
     casas = conn.execute(
         """
@@ -1367,25 +1424,208 @@ def get_casas_para_transferencia(excluir_casa_id=None):
         ORDER BY quadras.numero_quadra IS NULL, quadras.numero_quadra, casas.numero_casa, casas.id
         """
     ).fetchall()
+    familias = conn.execute(
+        "SELECT id, casa_id, nome FROM familias ORDER BY criada_em, id"
+    ).fetchall()
     conn.close()
-    if excluir_casa_id is None:
-        return casas
-    return [casa for casa in casas if casa["id"] != excluir_casa_id]
+
+    por_casa = {}
+    for familia in familias:
+        por_casa.setdefault(familia["casa_id"], []).append(familia)
+
+    destinos = []
+    for casa in casas:
+        familias = por_casa.get(casa["id"], [])
+        # A casa de origem não é destino dela mesma — mas os núcleos DELA são.
+        # Mudar da família da frente para a dos fundos é mudança de moradia de
+        # verdade, e é onde o agente vai procurar: no botão Transferir. Excluir
+        # o endereço inteiro da lista tirava esse movimento do alcance dele.
+        if casa["id"] == excluir_casa_id and not familias:
+            continue
+        destinos.append({**dict(casa), "familias": familias})
+    return destinos
 
 
-def inserir_paciente_do_form(casa_id, nome):
+def rotulo_destino_transferencia(conn, casa_destino, familia_destino_id):
+    """"Casa 7 · Quadra 13" — ou "Casa 7 · Quadra 13, família Fundos".
+
+    A confirmação é onde o agente confere se o morador foi para onde ele quis.
+    Num endereço de duas famílias, dizer só a casa não confere nada: as duas
+    respostas possíveis têm o mesmo texto."""
+    rotulo = rotulo_casa(casa_destino)
+    if not familia_destino_id:
+        return rotulo
+    familia = conn.execute(
+        "SELECT nome FROM familias WHERE id = ?", (familia_destino_id,)
+    ).fetchone()
+    return f"{rotulo}, família {familia['nome']}" if familia else rotulo
+
+
+def parse_destino_transferencia(valor):
+    """Valor do seletor de destino -> (casa_id, familia_id, erro).
+
+    "12" é a casa; "12:5" é o núcleo 5 dessa casa. Os dois viajam numa string só
+    porque o destino é UM controle na tela — e o formato aceita a casa sozinha,
+    que é o destino da casa não repartida (e o que o POST antigo mandava)."""
+    texto = str(valor or "").strip()
+    casa_texto, _, familia_texto = texto.partition(":")
+
+    casa_id, erro = parse_positive_int(casa_texto, "a casa de destino")
+    if erro:
+        return None, None, erro
+    if not familia_texto:
+        return casa_id, None, None
+
+    familia_id, erro = parse_positive_int(familia_texto, "a família de destino")
+    if erro:
+        return None, None, erro
+    return casa_id, familia_id, None
+
+
+# ---------------------------------------------------------------------------
+# Núcleo familiar
+#
+# Uma casa pode abrigar mais de uma família: dois núcleos partilhando a moradia,
+# ou as duas construções do mesmo lote ("frente" e "fundos"), que têm um
+# endereço só. É o mesmo recorte da ficha de cadastro domiciliar do e-SUS, onde
+# o bloco "núcleo familiar" se repete dentro de um domicílio.
+#
+# O estado normal continua sendo casa SEM núcleo nenhum: `familia_id` nulo em
+# todo mundo, e a tela é a lista simples de sempre. O núcleo só passa a existir
+# quando o operador acrescenta o segundo — e é nessa hora que o primeiro é
+# materializado, para não sobrar um grupo "sem família" ao lado do novo.
+# ---------------------------------------------------------------------------
+FAMILIA_NOME_TAMANHO_MAXIMO = 60
+
+
+def normalizar_nome_familia(value, padrao=""):
+    """Nome do núcleo em uma linha. Vazio cai no padrão sugerido — o operador
+    que não quis nomear não pode ficar com um núcleo sem rótulo, que é
+    justamente o que ele precisa ler para distinguir um do outro."""
+    nome = " ".join(str(value or "").split())[:FAMILIA_NOME_TAMANHO_MAXIMO]
+    return nome or padrao
+
+
+def familias_da_casa(conn, casa_id):
+    """Núcleos da casa, com quantos moradores ativos cada um tem."""
+    return conn.execute(
+        f"""
+        SELECT familias.*, COUNT(pacientes.id) AS total_pacientes
+        FROM familias
+        LEFT JOIN pacientes ON pacientes.familia_id = familias.id AND {SQL_PACIENTE_ATIVO}
+        WHERE familias.casa_id = ?
+        GROUP BY familias.id
+        ORDER BY familias.criada_em, familias.id
+        """,
+        (casa_id,),
+    ).fetchall()
+
+
+def proximo_nome_de_familia(familias):
+    """"Família 1", "Família 2"... Sugestão, não imposição: o operador troca por
+    "Fundos" ou pelo sobrenome, que é como ele fala em campo.
+
+    Deriva da lista que a página já carregou — contar de novo no banco seria uma
+    consulta por abertura de tela para saber o que está na mão."""
+    return f"Família {len(familias) + 1}"
+
+
+def agrupar_pacientes_por_familia(lista_pacientes):
+    """[(nome_do_núcleo_ou_None, pacientes)], na ordem em que aparecem.
+
+    Casa não repartida devolve um grupo só, com nome None — o chamador desenha
+    exatamente o que sempre desenhou, sem condicional espalhada. Exige
+    `familia_nome` na linha (a consulta do relatório traz por JOIN)."""
+    grupos = {}
+    for paciente in lista_pacientes:
+        chave = _coluna(paciente, "familia_id")
+        grupos.setdefault(chave, (_coluna(paciente, "familia_nome"), []))[1].append(paciente)
+    # Casa vazia continua rendendo um bloco: o relatório lista o imóvel sem
+    # morador, e devolver lista vazia aqui o apagaria da folha.
+    if not grupos or (len(grupos) == 1 and None in grupos):
+        return [(None, lista_pacientes)]
+    # Ordenado pelo id, que é a ordem de criação — a mesma da tela da casa. Por
+    # nome, o relatório listaria as famílias numa ordem e a tela noutra, e o
+    # agente que confere uma contra a outra perderia a correspondência.
+    # Sem núcleo por último: é o resto a realocar, não uma família.
+    return [
+        grupos[chave]
+        for chave in sorted(grupos, key=lambda chave: (chave is None, chave or 0))
+    ]
+
+
+def morador_guardado_na_casa(paciente):
+    """Cadastro que continua aparecendo na casa fora das contagens: quem se
+    mudou e quem saiu da área.
+
+    Óbito fica de fora. O cadastro é preservado (nada é apagado, e ele continua
+    na página Pacientes e nos relatórios), mas a tela da casa é a tela de
+    trabalho de quem bate na porta — e manter o falecido listado ali, visita
+    após visita, é ruído para o agente e desnecessário para a família."""
+    return status_paciente_de(paciente) not in ("ativo", "obito")
+
+
+def familia_valida_para_casa(conn, familia_id_bruto, casa_id):
+    """Núcleo escolhido no formulário, conferido contra a casa — ou None.
+
+    Fronteira de segurança, não conveniência: o id chega do cliente e nada
+    garante que ele seja desta casa. Sem a conferência, um POST forjado
+    prenderia um morador ao núcleo de outro domicílio, e a tela da outra casa
+    passaria a listar gente que não mora nela."""
+    valor = str(familia_id_bruto or "").strip()
+    # O teto de 64 bits não é capricho: o SQLite recusa inteiro maior que isso
+    # com OverflowError, e o valor vem do cliente — sem o corte, um id absurdo
+    # na querystring não seria "não encontrado", seria uma exceção não tratada
+    # virando 500. Acima do teto não existe id nenhum, então recusar é correto.
+    if not valor.isdigit() or int(valor) > SQLITE_INTEIRO_MAXIMO:
+        return None
+    familia = conn.execute(
+        "SELECT id FROM familias WHERE id = ? AND casa_id = ?", (int(valor), casa_id)
+    ).fetchone()
+    return familia["id"] if familia else None
+
+
+def agrupar_moradores_por_familia(familias, moradores):
+    """Moradores repartidos entre os núcleos, na ordem dos núcleos.
+
+    O grupo "sem núcleo" (`familia` None) só entra na lista quando tem gente:
+    numa casa de família única ele é o único grupo, e numa casa repartida ele
+    só aparece se um núcleo foi desfeito e devolveu os moradores para a casa —
+    é o rastro visível de que alguém ficou por realocar, e não um vazio mudo.
+    """
+    grupos = []
+    for familia in familias:
+        grupos.append({"familia": familia, "moradores": []})
+    grupos.append({"familia": None, "moradores": []})
+
+    por_id = {familia["id"]: indice for indice, familia in enumerate(familias)}
+    for morador in moradores:
+        grupos[por_id.get(_coluna(morador, "familia_id"), len(familias))]["moradores"].append(morador)
+
+    resultado = []
+    for grupo in grupos:
+        ativos = [m for m in grupo["moradores"] if status_paciente_de(m) == "ativo"]
+        inativos = [m for m in grupo["moradores"] if morador_guardado_na_casa(m)]
+        if grupo["familia"] is None and not ativos and not inativos:
+            continue
+        resultado.append({"familia": grupo["familia"], "ativos": ativos, "inativos": inativos})
+    return resultado
+
+
+def inserir_paciente_do_form(casa_id, nome, familia_id=None):
     """INSERT único dos dois fluxos de cadastro (pela casa e pela lista):
     os campos do form são normalizados num lugar só."""
     conn = get_db_connection()
     conn.execute(
         """
         INSERT INTO pacientes (
-            casa_id, nome, cpf, telefone, data_nascimento, sexo, nome_pai, nome_mae,
-            condicoes_saude, observacao
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            casa_id, familia_id, nome, cpf, telefone, data_nascimento, sexo, nome_pai,
+            nome_mae, condicoes_saude, observacao
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             casa_id,
+            familia_id,
             nome,
             formatar_cpf_ou_cns(request.form.get("cpf", "")),
             formatar_telefone(request.form.get("telefone", "")),
@@ -1654,12 +1894,16 @@ def index():
     ocupacao_filtro = request.args.get("ocupacao", "").strip()
     if ocupacao_filtro not in OCUPACAO_FILTROS:
         ocupacao_filtro = ""
+    situacao_filtro = request.args.get("situacao", "").strip()
+    if situacao_filtro not in SITUACAO_CASA_FILTROS:
+        situacao_filtro = ""
     quadra_filtro = request.args.get("quadra", "").strip()
 
     # Contagens exibidas no modal — calculadas ANTES do recorte, para o
     # operador saber quantos imóveis existem de cada tipo/quadra.
     contagem_tipos = {opcao["codigo"]: 0 for opcao in TIPOS_IMOVEL_OPCOES}
     contagem_ocupacao = {codigo: 0 for codigo in OCUPACAO_FILTROS}
+    contagem_situacao = {codigo: 0 for codigo in SITUACAO_CASA_FILTROS}
     sem_quadra_total = 0
     # A lista mostra o território inteiro, inclusive o que não é acompanhado —
     # é por ela que se reativa um imóvel. Quem some é o número no indicador.
@@ -1673,6 +1917,9 @@ def index():
         for codigo, corresponde in OCUPACAO_FILTROS.items():
             if corresponde(casa):
                 contagem_ocupacao[codigo] += 1
+        for codigo, corresponde in SITUACAO_CASA_FILTROS.items():
+            if corresponde(casa):
+                contagem_situacao[codigo] += 1
 
     total_casas_geral = len(casas)
     casas_filtradas = casas
@@ -1682,6 +1929,9 @@ def index():
     if ocupacao_filtro:
         corresponde_ocupacao = OCUPACAO_FILTROS[ocupacao_filtro]
         casas_filtradas = [casa for casa in casas_filtradas if corresponde_ocupacao(casa)]
+    if situacao_filtro:
+        corresponde_situacao = SITUACAO_CASA_FILTROS[situacao_filtro]
+        casas_filtradas = [casa for casa in casas_filtradas if corresponde_situacao(casa)]
     if quadra_filtro == "0":
         casas_filtradas = [casa for casa in casas_filtradas if casa["quadra_id"] is None]
     elif quadra_filtro.isdigit():
@@ -1700,13 +1950,15 @@ def index():
         casas_busca=casas_busca,
         tipos_filtro=tipos_filtro,
         ocupacao_filtro=ocupacao_filtro,
+        situacao_filtro=situacao_filtro,
         quadra_filtro=quadra_filtro,
         contagem_tipos=contagem_tipos,
         contagem_ocupacao=contagem_ocupacao,
+        contagem_situacao=contagem_situacao,
         sem_quadra_total=sem_quadra_total,
         total_casas_geral=total_casas_geral,
         casas_inativas=casas_inativas,
-        filtro_ativo=bool(tipos_filtro or ocupacao_filtro or quadra_filtro),
+        filtro_ativo=bool(tipos_filtro or ocupacao_filtro or situacao_filtro or quadra_filtro),
     )
 
 
@@ -1854,15 +2106,27 @@ def detalhes_casa(casa_id):
         "SELECT * FROM pacientes WHERE casa_id = ? ORDER BY nome",
         (casa_id,),
     ).fetchall()
+    familias = familias_da_casa(conn, casa_id)
     conn.close()
     pacientes = [p for p in moradores if status_paciente_de(p) == "ativo"]
-    pacientes_inativos = [p for p in moradores if status_paciente_de(p) != "ativo"]
+    pacientes_inativos = [p for p in moradores if morador_guardado_na_casa(p)]
     return render_template(
         "detalhes_casa.html",
         casa=casa,
         casa_ativa=casa_esta_ativa(casa),
         pacientes=pacientes,
         pacientes_inativos=pacientes_inativos,
+        familias=familias,
+        # A casa de família única não tem grupo nenhum: a tela continua sendo a
+        # lista simples de sempre, e o agrupamento só aparece quando existe algo
+        # a agrupar.
+        grupos_familia=agrupar_moradores_por_familia(familias, moradores) if familias else [],
+        nomes_familia={familia["id"]: familia["nome"] for familia in familias},
+        # O óbito sai da tela, não do sistema. A contagem é o rastro que leva o
+        # agente até onde o cadastro está — sem ela, o registro pareceria
+        # apagado, que é o oposto do que acontece.
+        total_obitos=sum(1 for p in moradores if status_paciente_de(p) == "obito"),
+        nome_sugerido_familia=proximo_nome_de_familia(familias),
         casas_destino=get_casas_para_transferencia(excluir_casa_id=casa_id),
     )
 
@@ -2026,11 +2290,30 @@ def cadastrar_paciente(casa_id):
     if casa is None:
         return redirect(url_for("index"))
 
+    conn = get_db_connection()
+    familias = familias_da_casa(conn, casa_id)
+    # Numa casa repartida, o núcleo vem do botão da própria família (query
+    # string) ou do seletor do formulário — nesta ordem, para o "Cadastrar
+    # morador" de uma família já chegar com ela escolhida.
+    familia_id = familia_valida_para_casa(
+        conn, request.form.get("familia_id") or request.args.get("familia"), casa_id
+    )
+    conn.close()
+
+    def reexibir():
+        return render_template(
+            "cadastrar_paciente.html",
+            casa=casa,
+            paciente=request.form,
+            familias=familias,
+            familia_id=familia_id,
+        )
+
     if request.method == "POST":
         nome = request.form.get("nome", "").strip()
         if not nome:
             flash("Informe o nome do paciente.", "danger")
-            return render_template("cadastrar_paciente.html", casa=casa, paciente=request.form)
+            return reexibir()
 
         duplicado = paciente_com_documento(apenas_digitos(request.form.get("cpf", "")))
         if duplicado:
@@ -2039,13 +2322,15 @@ def cadastrar_paciente(casa_id):
                 "Cada documento identifica um único paciente — localize o cadastro na página Pacientes.",
                 "danger",
             )
-            return render_template("cadastrar_paciente.html", casa=casa, paciente=request.form)
+            return reexibir()
 
-        inserir_paciente_do_form(casa_id, nome)
+        inserir_paciente_do_form(casa_id, nome, familia_id)
         flash("Paciente cadastrado com sucesso.", "success")
         return redirect(url_for("detalhes_casa", casa_id=casa_id))
 
-    return render_template("cadastrar_paciente.html", casa=casa)
+    return render_template(
+        "cadastrar_paciente.html", casa=casa, familias=familias, familia_id=familia_id
+    )
 
 
 @app.route("/pacientes/novo", methods=["GET", "POST"])
@@ -2130,12 +2415,19 @@ def editar_paciente(paciente_id):
         (paciente["casa_id"],),
     ).fetchone()
 
+    familias = familias_da_casa(conn, paciente["casa_id"]) if paciente["casa_id"] else []
+
+    def reexibir():
+        conn.close()
+        return render_template(
+            "editar_paciente.html", paciente=paciente, casa=casa, familias=familias
+        )
+
     if request.method == "POST":
         nome = request.form.get("nome", "").strip()
         if not nome:
             flash("Informe o nome do paciente.", "danger")
-            conn.close()
-            return render_template("editar_paciente.html", paciente=paciente, casa=casa)
+            return reexibir()
 
         duplicado = paciente_com_documento(
             apenas_digitos(request.form.get("cpf", "")), excluir_id=paciente_id
@@ -2146,14 +2438,18 @@ def editar_paciente(paciente_id):
                 "Cada documento identifica um único paciente.",
                 "danger",
             )
-            conn.close()
-            return render_template("editar_paciente.html", paciente=paciente, casa=casa)
+            return reexibir()
 
+        # O núcleo é conferido contra a casa DO PACIENTE: mudar de família é
+        # mudar de lugar dentro da própria casa, nunca para o núcleo de outra.
+        familia_id = familia_valida_para_casa(
+            conn, request.form.get("familia_id"), paciente["casa_id"]
+        )
         conn.execute(
             """
             UPDATE pacientes
             SET nome = ?, cpf = ?, telefone = ?, data_nascimento = ?, nome_pai = ?,
-                nome_mae = ?, sexo = ?, condicoes_saude = ?, observacao = ?
+                nome_mae = ?, sexo = ?, condicoes_saude = ?, observacao = ?, familia_id = ?
             WHERE id = ?
             """,
             (
@@ -2166,6 +2462,7 @@ def editar_paciente(paciente_id):
                 request.form.get("sexo", "").strip(),
                 normalizar_condicoes(request.form.getlist("condicoes_saude")),
                 request.form.get("observacao", "").strip(),
+                familia_id,
                 paciente_id,
             ),
         )
@@ -2176,7 +2473,7 @@ def editar_paciente(paciente_id):
         return redirect_apos_acao_no_paciente(casa_id)
 
     conn.close()
-    return render_template("editar_paciente.html", paciente=paciente, casa=casa)
+    return render_template("editar_paciente.html", paciente=paciente, casa=casa, familias=familias)
 
 
 # ---------------------------------------------------------------------------
@@ -2188,9 +2485,13 @@ def editar_paciente(paciente_id):
 LIXEIRA_RETENCAO_DIAS = 30
 
 _COLUNAS_PACIENTE = (
-    "casa_id, nome, cpf, telefone, data_nascimento, sexo, "
+    "casa_id, familia_id, nome, cpf, telefone, data_nascimento, sexo, "
     "nome_pai, nome_mae, condicoes_saude, observacao, status"
 )
+# Os "?" eram contados à mão em três INSERTs — acrescentar uma coluna significava
+# acertar os três, e errar um só grava o campo trocado sem erro nenhum. Derivar
+# do próprio texto das colunas mantém a contagem em sincronia sozinha.
+_VALORES_PACIENTE = ", ".join("?" * len(_COLUNAS_PACIENTE.split(",")))
 
 
 def purgar_lixeira_expirada(conn):
@@ -2219,11 +2520,12 @@ def excluir_paciente(paciente_id):
     conn.execute(
         f"""
         INSERT INTO lixeira_pacientes (id, {_COLUNAS_PACIENTE}, excluido_em)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, {_VALORES_PACIENTE}, ?)
         """,
         (
             paciente["id"],
             paciente["casa_id"],
+            paciente["familia_id"],
             paciente["nome"],
             paciente["cpf"],
             paciente["telefone"],
@@ -2309,8 +2611,14 @@ def restaurar_da_lixeira(paciente_id):
             casa_id = None
             aviso_casa = " A casa original não existe mais — o paciente voltou sem casa."
 
+    # O núcleo só é reatado se ainda existir E ainda for daquela casa: a casa
+    # pode ter voltado a ser de família única, ou o núcleo pode ter sido
+    # desfeito enquanto o registro esperava na lixeira.
+    familia_id = familia_valida_para_casa(conn, item["familia_id"], casa_id) if casa_id else None
+
     valores = (
         casa_id,
+        familia_id,
         item["nome"],
         item["cpf"],
         item["telefone"],
@@ -2325,12 +2633,12 @@ def restaurar_da_lixeira(paciente_id):
     try:
         # Preserva o id original quando livre (AUTOINCREMENT nunca o reusa).
         conn.execute(
-            f"INSERT INTO pacientes (id, {_COLUNAS_PACIENTE}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO pacientes (id, {_COLUNAS_PACIENTE}) VALUES (?, {_VALORES_PACIENTE})",
             (item["id"], *valores),
         )
     except sqlite3.IntegrityError:
         conn.execute(
-            f"INSERT INTO pacientes ({_COLUNAS_PACIENTE}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO pacientes ({_COLUNAS_PACIENTE}) VALUES ({_VALORES_PACIENTE})",
             valores,
         )
     conn.execute("DELETE FROM lixeira_pacientes WHERE id = ?", (paciente_id,))
@@ -2563,14 +2871,16 @@ def alterar_status_em_massa():
 @login_required
 def transferir_paciente(paciente_id):
     destino_url = proxima_url_segura(request.form.get("next"))
-    casa_destino_id, error = parse_positive_int(request.form.get("casa_destino_id"), "a casa de destino")
+    casa_destino_id, familia_destino_id, error = parse_destino_transferencia(
+        request.form.get("casa_destino_id")
+    )
     if error:
         flash(error, "danger")
         return redirect(destino_url)
 
     conn = get_db_connection()
     paciente = conn.execute(
-        "SELECT nome, casa_id, status FROM pacientes WHERE id = ?", (paciente_id,)
+        "SELECT nome, casa_id, familia_id, status FROM pacientes WHERE id = ?", (paciente_id,)
     ).fetchone()
     if paciente is None:
         conn.close()
@@ -2602,26 +2912,43 @@ def transferir_paciente(paciente_id):
         flash("Casa de destino não encontrada.", "warning")
         return redirect(destino_url)
 
-    if paciente["casa_id"] == casa_destino_id:
+    # O núcleo escrito é o do DESTINO, conferido contra a casa de destino: o da
+    # origem nunca viaja junto (deixaria o morador vinculado a um núcleo de
+    # outro domicílio). Destino sem núcleo escolhido, ou casa de destino não
+    # repartida, grava NULL — o morador chega como morador da casa.
+    familia_destino_id = familia_valida_para_casa(conn, familia_destino_id, casa_destino_id)
+
+    # Só é no-op quando casa E núcleo são os mesmos. Comparar só a casa recusava
+    # a mudança de família dentro do mesmo endereço — que é movimento real, e o
+    # motivo de este endereço ter duas famílias.
+    if (
+        paciente["casa_id"] == casa_destino_id
+        and _coluna(paciente, "familia_id") == familia_destino_id
+    ):
         conn.close()
-        flash("O paciente já está nessa casa.", "info")
+        flash(
+            "O paciente já está nessa família." if familia_destino_id
+            else "O paciente já está nessa casa.",
+            "info",
+        )
         return redirect(destino_url)
 
     # Transferir dentro da área = novo endereço conhecido → volta a ser ativo.
     # A condição repete o bloqueio de óbito no próprio UPDATE: mesmo que o
     # status mude entre o SELECT acima e aqui (outra aba), nada é "ressuscitado".
     cursor = conn.execute(
-        "UPDATE pacientes SET casa_id = ?, status = 'ativo' "
+        "UPDATE pacientes SET casa_id = ?, familia_id = ?, status = 'ativo' "
         "WHERE id = ? AND COALESCE(status, 'ativo') != 'obito'",
-        (casa_destino_id, paciente_id),
+        (casa_destino_id, familia_destino_id, paciente_id),
     )
     conn.commit()
+    rotulo_destino = rotulo_destino_transferencia(conn, casa_destino, familia_destino_id)
     conn.close()
     if cursor.rowcount == 0:
         flash("A transferência não foi aplicada — o cadastro mudou nesse meio tempo.", "warning")
         return redirect(destino_url)
     flash(
-        f"{paciente['nome']} transferido para a {rotulo_casa(casa_destino)}.",
+        f"{paciente['nome']} transferido para a {rotulo_destino}.",
         "success",
     )
     return redirect(destino_url)
@@ -2634,13 +2961,24 @@ def transferir_familia(casa_id):
     if casa is None:
         return redirect(url_for("index"))
 
-    casa_destino_id, error = parse_positive_int(request.form.get("casa_destino_id"), "a casa de destino")
+    casa_destino_id, familia_destino_id, error = parse_destino_transferencia(
+        request.form.get("casa_destino_id")
+    )
     if error:
         flash(error, "danger")
         return redirect(url_for("detalhes_casa", casa_id=casa_id))
 
-    if casa_destino_id == casa_id:
-        flash("Escolha uma casa diferente da atual.", "danger")
+    # Origem e destino comparados como número, não como o texto que veio do
+    # formulário: "007" e 7 são o mesmo núcleo, e comparar string deixaria passar
+    # uma transferência que não move ninguém.
+    familia_origem_id, _ = parse_positive_int(
+        request.form.get("familia_id"), "a família", required=False
+    )
+    # Mesma casa só é recusada quando o núcleo de destino também é o mesmo. No
+    # mesmo endereço, mandar uma família para a outra é juntar duas que na
+    # verdade são uma — movimento real, e o inverso do "acrescentar família".
+    if casa_destino_id == casa_id and familia_destino_id == familia_origem_id:
+        flash("Escolha um destino diferente do atual.", "danger")
         return redirect(url_for("detalhes_casa", casa_id=casa_id))
 
     conn = get_db_connection()
@@ -2669,13 +3007,30 @@ def transferir_familia(casa_id):
 
     # Só moradores ativos mudam junto — quem já se mudou antes fica registrado
     # na casa onde morava.
+    #
+    # Dois núcleos diferentes nesta escrita: `familia_id` é QUEM sai (recorte na
+    # casa de origem) e `familia_destino_id` é ONDE chega. O da origem nunca
+    # viaja junto — levá-lo deixaria o morador vinculado a um núcleo de OUTRO
+    # domicílio, e a casa de origem passaria a listar gente que mudou de
+    # endereço.
     conn = get_db_connection()
+    familia_id = familia_valida_para_casa(conn, familia_origem_id, casa_id)
+    if familia_origem_id is not None and familia_id is None:
+        conn.close()
+        flash("Família não encontrada nesta casa.", "warning")
+        return redirect(url_for("detalhes_casa", casa_id=casa_id))
+
+    familia_destino_id = familia_valida_para_casa(conn, familia_destino_id, casa_destino_id)
+    recorte = "AND familia_id = ?" if familia_id else ""
+    parametros = [casa_destino_id, familia_destino_id, casa_id] + ([familia_id] if familia_id else [])
     cursor = conn.execute(
-        f"UPDATE pacientes SET casa_id = ? WHERE casa_id = ? AND {SQL_PACIENTE_ATIVO}",
-        (casa_destino_id, casa_id),
+        "UPDATE pacientes SET casa_id = ?, familia_id = ?"
+        f" WHERE casa_id = ? AND {SQL_PACIENTE_ATIVO} {recorte}",
+        parametros,
     )
     transferidos = cursor.rowcount
     conn.commit()
+    rotulo_destino = rotulo_destino_transferencia(conn, casa_destino, familia_destino_id)
     conn.close()
 
     if transferidos == 0:
@@ -2683,10 +3038,177 @@ def transferir_familia(casa_id):
         return redirect(url_for("detalhes_casa", casa_id=casa_id))
 
     flash(
-        f"{transferidos} morador(es) transferido(s) para a {rotulo_casa(casa_destino)}.",
+        f"{transferidos} morador(es) transferido(s) para a {rotulo_destino}.",
         "success",
     )
     return redirect(url_for("detalhes_casa", casa_id=casa_destino_id))
+
+
+# ---------------------------------------------------------------------------
+# Acrescentar, renomear e desfazer um núcleo familiar
+# ---------------------------------------------------------------------------
+@app.route("/casa/<int:casa_id>/familia/nova", methods=["POST"])
+@login_required
+def criar_familia(casa_id):
+    """Reparte a casa em núcleos — ou acrescenta mais um a uma casa já repartida.
+
+    Na PRIMEIRA vez, dois núcleos nascem juntos: o dos moradores que já estavam
+    na casa e o novo, vazio. Criar só o novo deixaria os antigos num limbo "sem
+    família" ao lado dele, e o operador teria de mover morador por morador para
+    um núcleo que ele não pediu — trabalho nascido de uma decisão nossa.
+    """
+    casa = get_house_or_404(casa_id)
+    if casa is None:
+        return redirect(url_for("index"))
+
+    destino = url_for("detalhes_casa", casa_id=casa_id)
+    conn = get_db_connection()
+    existentes = conn.execute(
+        "SELECT COUNT(*) AS total FROM familias WHERE casa_id = ?", (casa_id,)
+    ).fetchone()["total"]
+    conn.close()
+
+    if existentes == 0:
+        # A materialização escreve em todos os moradores da casa de uma vez —
+        # backup antes, como toda mutação em lote do sistema.
+        try:
+            criar_backup("antes_repartir_familia")
+        except (sqlite3.Error, OSError) as exc:
+            logger.error("Falha ao criar backup antes de repartir a casa %s: %s", casa_id, exc)
+            flash("Não foi possível criar backup de segurança. Nada foi alterado.", "danger")
+            return redirect(destino)
+
+    # A contagem é relida na conexão que escreve. A primeira leitura só decidiu
+    # se valia a pena o backup; usá-la para decidir a repartição abriria a
+    # janela entre ler e escrever — duas abas do mesmo agente materializariam o
+    # primeiro núcleo duas vezes.
+    conn = get_db_connection()
+    existentes = conn.execute(
+        "SELECT COUNT(*) AS total FROM familias WHERE casa_id = ?", (casa_id,)
+    ).fetchone()["total"]
+    primeira_reparticao = existentes == 0
+
+    nome_nova = normalizar_nome_familia(
+        request.form.get("nome"), padrao=f"Família {2 if primeira_reparticao else existentes + 1}"
+    )
+    nome_atual = normalizar_nome_familia(request.form.get("nome_atual"), padrao="Família 1")
+
+    agora = datetime.now().isoformat(timespec="seconds")
+    try:
+        if primeira_reparticao:
+            cursor = conn.execute(
+                "INSERT INTO familias (casa_id, nome, criada_em) VALUES (?, ?, ?)",
+                (casa_id, nome_atual, agora),
+            )
+            # Inclusive quem se mudou ou faleceu: eles fizeram parte deste
+            # núcleo, e deixá-los fora reescreveria a história da casa.
+            conn.execute(
+                "UPDATE pacientes SET familia_id = ? WHERE casa_id = ? AND familia_id IS NULL",
+                (cursor.lastrowid, casa_id),
+            )
+        conn.execute(
+            "INSERT INTO familias (casa_id, nome, criada_em) VALUES (?, ?, ?)",
+            (casa_id, nome_nova, agora),
+        )
+        conn.commit()
+    except sqlite3.Error as exc:
+        conn.rollback()
+        conn.close()
+        logger.error("Falha ao acrescentar família na casa %s: %s", casa_id, exc)
+        flash("Não foi possível acrescentar a família.", "danger")
+        return redirect(destino)
+    conn.close()
+
+    logger.info("Família acrescentada na casa %s a partir de %s", casa_id, request.remote_addr)
+    if primeira_reparticao:
+        flash(
+            f"Casa repartida em duas famílias. Os moradores que já estavam aqui ficaram "
+            f"em “{nome_atual}”; cadastre os de “{nome_nova}” pelo botão da própria família.",
+            "success",
+        )
+    else:
+        flash(f"Família “{nome_nova}” acrescentada a esta casa.", "success")
+    return redirect(destino)
+
+
+@app.route("/familia/<int:familia_id>/renomear", methods=["POST"])
+@login_required
+def renomear_familia(familia_id):
+    conn = get_db_connection()
+    familia = conn.execute("SELECT * FROM familias WHERE id = ?", (familia_id,)).fetchone()
+    if familia is None:
+        conn.close()
+        flash("Família não encontrada.", "warning")
+        return redirect(url_for("index"))
+
+    nome = normalizar_nome_familia(request.form.get("nome"))
+    if not nome:
+        conn.close()
+        flash("Informe o nome da família.", "danger")
+        return redirect(url_for("detalhes_casa", casa_id=familia["casa_id"]))
+
+    conn.execute("UPDATE familias SET nome = ? WHERE id = ?", (nome, familia_id))
+    conn.commit()
+    conn.close()
+    flash(f"Família renomeada para “{nome}”.", "success")
+    return redirect(url_for("detalhes_casa", casa_id=familia["casa_id"]))
+
+
+@app.route("/familia/<int:familia_id>/excluir", methods=["POST"])
+@login_required
+def excluir_familia(familia_id):
+    """Desfaz o núcleo. Os moradores ficam na casa, sem núcleo.
+
+    Desfazer um agrupamento nunca pode apagar gente — é o `ON DELETE SET NULL`
+    da coluna que garante isso, e não a boa vontade desta rota. Quem sobra
+    aparece na tela como "sem família", visível e realocável."""
+    conn = get_db_connection()
+    familia = conn.execute("SELECT * FROM familias WHERE id = ?", (familia_id,)).fetchone()
+    if familia is None:
+        conn.close()
+        flash("Família não encontrada.", "warning")
+        return redirect(url_for("index"))
+
+    casa_id = familia["casa_id"]
+    moradores = conn.execute(
+        "SELECT COUNT(*) AS total FROM pacientes WHERE familia_id = ?", (familia_id,)
+    ).fetchone()["total"]
+    restantes = conn.execute(
+        "SELECT COUNT(*) AS total FROM familias WHERE casa_id = ? AND id != ?",
+        (casa_id, familia_id),
+    ).fetchone()["total"]
+    conn.close()
+
+    if moradores:
+        try:
+            criar_backup("antes_desfazer_familia")
+        except (sqlite3.Error, OSError) as exc:
+            logger.error("Falha ao criar backup antes de desfazer a família %s: %s", familia_id, exc)
+            flash("Não foi possível criar backup de segurança. Nada foi alterado.", "danger")
+            return redirect(url_for("detalhes_casa", casa_id=casa_id))
+
+    conn = get_db_connection()
+    # Sobrando um só, a casa volta a ser de família única: manter o último
+    # núcleo faria a tela mostrar um agrupamento que não agrupa nada.
+    if restantes == 1:
+        conn.execute("DELETE FROM familias WHERE casa_id = ?", (casa_id,))
+    else:
+        conn.execute("DELETE FROM familias WHERE id = ?", (familia_id,))
+    conn.commit()
+    conn.close()
+
+    logger.info("Família %s desfeita na casa %s a partir de %s", familia_id, casa_id, request.remote_addr)
+    if restantes == 1:
+        flash("Casa voltou a ter uma família só. Nenhum morador foi removido.", "success")
+    elif moradores:
+        flash(
+            f"Família desfeita. {moradores} morador(es) continuam nesta casa, sem família — "
+            "mova cada um para a família certa.",
+            "success",
+        )
+    else:
+        flash("Família desfeita.", "success")
+    return redirect(url_for("detalhes_casa", casa_id=casa_id))
 
 
 # A família inteira muda de situação junto — mas óbito não. Marcar uma casa
@@ -2698,8 +3220,13 @@ STATUS_FAMILIA_VALIDOS = ("ativo", "mudou_se", "fora_de_area")
 @app.route("/casa/<int:casa_id>/status-familia", methods=["POST"])
 @login_required
 def alterar_status_familia(casa_id):
-    """Aplica uma situação a todos os moradores da casa de uma vez: a família
-    que se mudou, saiu da área — ou voltou."""
+    """Aplica uma situação aos moradores de uma vez: a família que se mudou,
+    saiu da área — ou voltou.
+
+    Sem `familia_id` no formulário, o alvo é a casa inteira (é o caso da casa de
+    família única). Com ele, só aquele núcleo — numa casa repartida, mudar a
+    casa inteira quando o operador clicou no botão de UMA família marcaria como
+    mudada gente que não saiu do lugar."""
     casa = get_house_or_404(casa_id)
     if casa is None:
         return redirect(url_for("index"))
@@ -2708,6 +3235,13 @@ def alterar_status_familia(casa_id):
     status = request.form.get("status", "").strip()
     if status not in STATUS_FAMILIA_VALIDOS:
         flash("Escolha a situação a aplicar aos moradores.", "danger")
+        return redirect(destino)
+
+    conn = get_db_connection()
+    familia_id = familia_valida_para_casa(conn, request.form.get("familia_id"), casa_id)
+    conn.close()
+    if request.form.get("familia_id", "").strip() and familia_id is None:
+        flash("Família não encontrada nesta casa.", "warning")
         return redirect(destino)
 
     # Mutação em lote: backup antes, como na transferência da família e no
@@ -2722,10 +3256,12 @@ def alterar_status_familia(casa_id):
     conn = get_db_connection()
     # Quem já está no estado alvo fica de fora para a contagem do aviso dizer o
     # que de fato mudou; óbito nunca é tocado, em nenhuma das direções.
+    recorte = "AND familia_id = ?" if familia_id else ""
+    parametros = [status, casa_id, status] + ([familia_id] if familia_id else [])
     cursor = conn.execute(
         "UPDATE pacientes SET status = ?"
-        " WHERE casa_id = ? AND COALESCE(status, 'ativo') NOT IN ('obito', ?)",
-        (status, casa_id, status),
+        f" WHERE casa_id = ? AND COALESCE(status, 'ativo') NOT IN ('obito', ?) {recorte}",
+        parametros,
     )
     alterados = cursor.rowcount
     conn.commit()
@@ -3675,8 +4211,23 @@ def exportar_pdf():
             f"Casa Nº {xml_escape(str(casa['numero_casa'] or '—'))}"
             f' <font size="9" color="#0a58ca">· {xml_escape(quadra_label)}</font>'
         )
-        tabela, total = montar_bloco_casa(titulo_casa, endereco_pdf, lista_pacientes)
-        adicionar_bloco(casa_elements, tabela, total)
+        # Casa repartida rende um bloco por núcleo: sem isso, duas famílias do
+        # mesmo endereço saem no relatório como uma lista só de nove pessoas, e
+        # quem vai a campo não sabe onde termina uma e começa a outra.
+        for indice, (nome_familia, lista_do_nucleo) in enumerate(
+            agrupar_pacientes_por_familia(lista_pacientes)
+        ):
+            subtitulo = endereco_pdf
+            if nome_familia:
+                subtitulo += (
+                    f' &nbsp;|&nbsp; <b>Família:</b> {xml_escape(nome_familia)}'
+                )
+            tabela, total = montar_bloco_casa(titulo_casa, subtitulo, lista_do_nucleo)
+            # A abertura (título da seção e da quadra) pertence à CASA, não a
+            # cada núcleo: passá-la em todas as voltas reimprimia "Pacientes por
+            # quadra e casa" e o título da quadra no meio da folha, uma vez por
+            # família. Do segundo núcleo em diante o bloco entra sozinho.
+            adicionar_bloco(casa_elements if indice == 0 else [], tabela, total)
         primeiro_bloco = False
 
     if pacientes_sem_casa:

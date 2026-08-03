@@ -75,6 +75,7 @@
     {% if ordem == 'desc' %}<input type="hidden" name="ordem" value="desc">{% endif %}
     {% for tipo in tipos_filtro %}<input type="hidden" name="tipo" value="{{ tipo }}">{% endfor %}
     {% if ocupacao_filtro %}<input type="hidden" name="ocupacao" value="{{ ocupacao_filtro }}">{% endif %}
+    {% if situacao_filtro %}<input type="hidden" name="situacao" value="{{ situacao_filtro }}">{% endif %}
     {% if quadra_filtro %}<input type="hidden" name="quadra" value="{{ quadra_filtro }}">{% endif %}
     <input
       class="form-input flex-1"
@@ -90,7 +91,7 @@
     <div class="flex gap-2">
       <button class="btn-primary" type="submit">Buscar</button>
       {% if busca %}
-        <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none, tipo=tipos_filtro or none, ocupacao=ocupacao_filtro or none, quadra=quadra_filtro or none) }}">Limpar</a>
+        <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none, tipo=tipos_filtro or none, ocupacao=ocupacao_filtro or none, situacao=situacao_filtro or none, quadra=quadra_filtro or none) }}">Limpar</a>
       {% endif %}
     </div>
   </form>
@@ -181,7 +182,7 @@
           <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none, busca=busca or none) }}">Limpar filtro</a>
         {% endif %}
         <a class="btn-secondary house-sort-toggle"
-           href="{{ url_for('index', ordem='desc' if ordem == 'asc' else 'asc', busca=busca or none, quadra=quadra_filtro or none, tipo=tipos_filtro or none, ocupacao=ocupacao_filtro or none) }}"
+           href="{{ url_for('index', ordem='desc' if ordem == 'asc' else 'asc', busca=busca or none, quadra=quadra_filtro or none, tipo=tipos_filtro or none, ocupacao=ocupacao_filtro or none, situacao=situacao_filtro or none) }}"
            title="Ordenar casas pela numeração — {{ 'crescente' if ordem == 'asc' else 'decrescente' }} agora. Clique para inverter."
            aria-label="Ordenar casas pela numeração, {{ 'crescente' if ordem == 'asc' else 'decrescente' }}. Clique para inverter.">
           {% if ordem == 'asc' %}
@@ -196,7 +197,7 @@
                 aria-haspopup="dialog" aria-controls="filter-dialog">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
           Filtrar
-          {% if filtro_ativo %}<span class="rounded-full bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{{ tipos_filtro|length + (1 if ocupacao_filtro else 0) + (1 if quadra_filtro else 0) }}</span>{% endif %}
+          {% if filtro_ativo %}<span class="rounded-full bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{{ tipos_filtro|length + (1 if ocupacao_filtro else 0) + (1 if situacao_filtro else 0) + (1 if quadra_filtro else 0) }}</span>{% endif %}
         </button>
         <a class="btn-secondary" href="{{ url_for('cadastrar_casa') }}">Cadastrar casa</a>
       </div>
@@ -316,7 +317,7 @@
         <div>
           <p class="filter-dialog-kicker">Casas</p>
           <h2 id="filter-dialog-title" class="filter-dialog-title">Filtrar casas</h2>
-          <p class="filter-dialog-sub">Recorte a lista por tipo de imóvel, ocupação e quadra — cada opção mostra quantos existem.</p>
+          <p class="filter-dialog-sub">Recorte a lista por tipo de imóvel, ocupação, situação e quadra — cada opção mostra quantos existem.</p>
         </div>
         <button type="button" class="a11y-close" data-dialog-close aria-label="Fechar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -348,6 +349,20 @@
           </option>
           <option value="vazias" {% if ocupacao_filtro == 'vazias' %}selected{% endif %}>
             Vazias — domicílio sem morador ({{ contagem_ocupacao.vazias }})
+          </option>
+        </select>
+
+        {# Recorte separado do de ocupação: "vazias" e "com moradores" só falam
+           de imóvel acompanhado, então sem este o imóvel inativo não tinha como
+           ser listado sozinho — e é pela lista dele que se reativa um cadastro. #}
+        <label class="form-label" for="filtro-situacao">Situação do imóvel</label>
+        <select class="form-input mb-5" id="filtro-situacao" name="situacao">
+          <option value="">Todos os imóveis</option>
+          <option value="ativas" {% if situacao_filtro == 'ativas' %}selected{% endif %}>
+            Ativos — acompanhados pela equipe ({{ contagem_situacao.ativas }})
+          </option>
+          <option value="inativas" {% if situacao_filtro == 'inativas' %}selected{% endif %}>
+            Inativados — fora das contagens ({{ contagem_situacao.inativas }})
           </option>
         </select>
 

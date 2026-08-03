@@ -2215,6 +2215,40 @@ body.confirm-dialog-open { overflow: hidden; }
 
 .house-menu-separator { background: #e2e8f0; border: 0; height: 1px; margin: 0.35rem 0.3rem; }
 
+/* Item destrutivo do menu (desfazer família). Vermelho só no hover: em repouso
+   ele é mais um item da lista, e não um alarme aceso permanentemente ao lado de
+   ações rotineiras. */
+.house-menu-item-danger:hover,
+.house-menu-item-danger:focus-visible { background: #fef2f2; color: #b91c1c; }
+
+.house-menu-item-danger:hover svg,
+.house-menu-item-danger:focus-visible svg { color: #b91c1c; }
+
+/* Cabeçalho do cartão de uma família. Mesmo respiro do cabeçalho da tabela
+   simples, para as duas telas (casa de família única e casa repartida) terem o
+   mesmo ritmo vertical. */
+.familia-cabecalho {
+  align-items: flex-start;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.75rem 0.85rem;
+}
+
+/* Grupo dos moradores que ficaram sem núcleo quando um foi desfeito. Traço
+   interrompido, como o imóvel inativo do painel: é estado a resolver, não uma
+   família — e some sozinho quando o último for realocado. */
+.familia-sem-nucleo { border-style: dashed; }
+
+.theme-dark .house-menu-item-danger:hover,
+.theme-dark .house-menu-item-danger:focus-visible { background: rgba(220, 38, 38, 0.14); color: #fca5a5; }
+
+.theme-dark .house-menu-item-danger:hover svg,
+.theme-dark .house-menu-item-danger:focus-visible svg { color: #fca5a5; }
+
+.theme-dark .familia-cabecalho { border-color: #273449; }
+
 .theme-dark .house-menu { background: #111827; border-color: #273449; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5); }
 
 .theme-dark .house-menu-group { color: #64748b; }
