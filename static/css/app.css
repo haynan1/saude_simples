@@ -1949,8 +1949,12 @@ body.confirm-dialog-open { overflow: hidden; }
 
 .theme-dark [data-copy].is-copied { border-color: #4ade80 !important; color: #4ade80 !important; }
 
-/* Botões compactos dos cartões (casas/quadras) e variante de perigo discreta. */
-.house-tile-btn { border-radius: 0.6rem; font-size: 0.78rem; min-height: 2.1rem; padding: 0.35rem 0.7rem; }
+/* Botões compactos dos cartões (casas/quadras) e variante de perigo discreta.
+   O `width: auto` é a parte que não pode sumir: no celular, `.btn-secondary`
+   vira 100% de largura (regra dos botões de formulário, em @media 640px), e
+   num cartão ao lado de um texto com `shrink-0` isso esmaga o texto até uma
+   palavra por linha. Aqui o botão é ação de linha, não ação de formulário. */
+.house-tile-btn { border-radius: 0.6rem; font-size: 0.78rem; min-height: 2.1rem; padding: 0.35rem 0.7rem; width: auto; }
 
 /* Alternador de ordem das casas: largura fixa para "Crescente"/"Decrescente"
    ocuparem o mesmo espaço — sem salto de layout ao inverter o sentido. */
@@ -2501,6 +2505,45 @@ a.pagination-btn:hover { background: #f8fafc; border-color: var(--accent, #2563e
 .house-board-scroll,
 .quadra-list-scroll { max-height: 45rem; }
 
+/* Busca do painel: um grupo por dimensão — gente e lugar, lado a lado. O
+   título é um rótulo de seção, não um cabeçalho de conteúdo: pequeno,
+   espaçado, com a contagem colada nele. */
+.search-group-title {
+  align-items: center;
+  color: #64748b;
+  display: flex;
+  font-size: 0.68rem;
+  font-weight: 800;
+  gap: 0.5rem;
+  letter-spacing: 0.09em;
+  margin: 0 0 0.6rem;
+  text-transform: uppercase;
+}
+
+/* Resultado longo rola dentro do grupo — a lista de casas do painel continua
+   visível sem precisar passar por 40 achados. */
+.search-results-scroll { max-height: 21rem; }
+
+/* Exemplos de sintaxe na dica ("casa 42", "q3"): monoespaçado porque é texto
+   para digitar, não para ler. Quem vê aprende a escrever a busca. */
+.search-token {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.4rem;
+  color: #475569;
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  margin: 0.15rem 0.15rem 0 0;
+  padding: 0.05rem 0.35rem;
+  white-space: nowrap;
+}
+
+.theme-dark .search-group-title { color: #9aa8bb; }
+
+.theme-dark .search-token { background: #182236; border-color: #334155; color: #cbd5e1; }
+
 /* Modal flutuante "Filtrar casas": mesma linguagem do confirm-dialog. */
 .filter-dialog[hidden] { display: none; }
 
@@ -2534,7 +2577,10 @@ a.pagination-btn:hover { background: #f8fafc; border-color: var(--accent, #2563e
 
 .filter-dialog-head { align-items: flex-start; display: flex; gap: 1rem; justify-content: space-between; padding: 1.5rem 1.5rem 1rem; }
 
-.filter-dialog-kicker { color: var(--accent, #2563eb); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.09em; margin: 0 0 0.25rem; text-transform: uppercase; }
+/* --accent-ink, não --accent: o rótulo é TEXTO, e texto pequeno exige 4,5:1.
+   O teal-600 de --accent dá 3,74:1 no branco — serve para borda, foco e ícone
+   (3:1), não para ler. Mesmo raciocínio do --accent-solid do botão primário. */
+.filter-dialog-kicker { color: var(--accent-ink, #1d4ed8); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.09em; margin: 0 0 0.25rem; text-transform: uppercase; }
 
 .filter-dialog-title { color: #0f172a; font-size: 1.15rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1.3; margin: 0; }
 

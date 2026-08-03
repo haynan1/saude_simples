@@ -341,3 +341,84 @@ def test_controles_da_linha_nao_se_sobrepoem(pagina, servidor):
             f"a {largura}px as ações precisam de {medidas['precisa']:.0f}px"
             f" e a célula oferece {medidas['caixaDoGrupo']:.0f}px"
         )
+
+
+def test_resultado_da_busca_nao_e_esmagado_no_celular(pagina, servidor):
+    """No celular, `.btn-secondary` vira 100% de largura — é a regra dos botões
+    de formulário. Num resultado de busca, ao lado de um texto, com `shrink-0`
+    impedindo o botão de ceder, isso empurrava o endereço para uma palavra por
+    linha e o botão passava por cima do nome. HTML impecável, tela ilegível: a
+    medida tem de vir do navegador, como no teste acima."""
+    # Um termo que acerta os dois grupos: o endereço do imóvel e o nome de quem
+    # mora nele — as duas listas de resultado precisam ser medidas.
+    conn = db.get_db_connection()
+    conn.execute(
+        "INSERT INTO casas (id, numero_casa, endereco, tipo_imovel)"
+        " VALUES (1, 42, 'Rua das Flores Amarelas, 100', 'domicilio')"
+    )
+    conn.execute(
+        "INSERT INTO pacientes (id, casa_id, nome, status)"
+        " VALUES (1, 1, 'JOAQUINA DAS FLORES SOUZA', 'ativo')"
+    )
+    conn.commit()
+    conn.close()
+
+    _entrar(pagina, servidor)
+    pagina.set_viewport_size({"width": 390, "height": 844})
+    pagina.goto(f"{servidor}/?busca=flores")
+    pagina.wait_for_selector("#busca-casas .panel-scroll")
+    pagina.wait_for_selector("#busca-pacientes .panel-scroll")
+
+    for grupo in ("#busca-pacientes", "#busca-casas"):
+        medidas = pagina.evaluate(
+            """(seletor) => {
+              const linha = document.querySelector(seletor + ' .panel-scroll > div');
+              const texto = linha.firstElementChild;
+              const acao = linha.lastElementChild;
+              return {
+                fimDoTexto: texto.getBoundingClientRect().right,
+                inicioDaAcao: acao.getBoundingClientRect().left,
+                larguraDoTexto: texto.getBoundingClientRect().width,
+                larguraDaLinha: linha.getBoundingClientRect().width,
+              };
+            }""",
+            grupo,
+        )
+        assert medidas["inicioDaAcao"] >= medidas["fimDoTexto"], (
+            f"{grupo}: o botão cobre o texto do resultado"
+        )
+        # E o texto continua com metade da linha — sem isso ele "cabe", mas
+        # quebrado em uma palavra por linha, que é o defeito real.
+        assert medidas["larguraDoTexto"] >= medidas["larguraDaLinha"] * 0.5, (
+            f"{grupo}: sobraram {medidas['larguraDoTexto']:.0f}px de"
+            f" {medidas['larguraDaLinha']:.0f}px para o texto"
+        )
+
+
+def test_modal_de_filtro_abre_fecha_e_aplica(pagina, servidor):
+    """O modal do painel usa o mecanismo genérico [data-dialog-open] — o mesmo
+    dos diálogos da casa, depois de o JS próprio dele ser removido. O ciclo
+    inteiro é verificado aqui, inclusive o destravamento do scroll: overlay que
+    fecha sem soltar o `body` deixa a página presa."""
+    _semear_casa_com_paciente()
+    _entrar(pagina, servidor)
+
+    travado = "document.body.classList.contains('confirm-dialog-open')"
+
+    pagina.click('[data-dialog-open="filter-dialog"]')
+    pagina.wait_for_selector("#filter-dialog.is-visible")
+    assert pagina.evaluate(travado)
+
+    pagina.keyboard.press("Escape")
+    pagina.wait_for_selector("#filter-dialog", state="hidden")
+    assert not pagina.evaluate(travado)
+
+    pagina.click('[data-dialog-open="filter-dialog"]')
+    pagina.wait_for_selector("#filter-dialog.is-visible")
+    _marcar_janela(pagina)
+    pagina.check('#filter-dialog input[name="tipo"][value="domicilio"]')
+    pagina.click('#filter-dialog button[type="submit"]')
+    pagina.wait_for_url("**/?*tipo=domicilio*")
+
+    assert _janela_sobreviveu(pagina)   # aplicar filtro navega parcial
+    assert not pagina.evaluate(travado)  # e solta o scroll

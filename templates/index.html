@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_status_paciente.html" import badge_status %}
+{% from "_selos_casa.html" import selos_casa %}
 {% block title %}Painel{% endblock %}
 
 {% block content %}
@@ -56,58 +57,109 @@
   </div>
 </div>
 
-<!-- Busca de paciente -->
+<!-- Busca no território: pessoa e lugar na mesma caixa -->
 <section class="rounded-xl border border-slate-200 bg-white p-5 mb-8">
   <div class="mb-3">
-    <h2 class="text-sm font-bold text-slate-900">Buscar paciente</h2>
-    <p class="text-xs text-slate-500">Pesquise por nome, CPF ou CNS — a casa do paciente abre direto.</p>
+    <h2 class="text-sm font-bold text-slate-900">Buscar no território</h2>
+    <p class="text-xs text-slate-500">
+      Paciente por nome, CPF ou CNS. Imóvel por número, endereço, quadra ou tipo —
+      <span class="search-token">casa 42</span>
+      <span class="search-token">q3</span>
+      <span class="search-token">rua das flores</span>
+      <span class="search-token">terreno baldio</span>
+    </p>
   </div>
+  {# O recorte do quadro viaja junto: buscar não pode desfazer o filtro que o
+     operador acabou de aplicar (o modal já faz o inverso, com a busca). #}
   <form method="get" action="{{ url_for('index') }}" role="search" class="flex flex-col sm:flex-row gap-2">
+    {% if ordem == 'desc' %}<input type="hidden" name="ordem" value="desc">{% endif %}
+    {% for tipo in tipos_filtro %}<input type="hidden" name="tipo" value="{{ tipo }}">{% endfor %}
+    {% if ocupacao_filtro %}<input type="hidden" name="ocupacao" value="{{ ocupacao_filtro }}">{% endif %}
+    {% if quadra_filtro %}<input type="hidden" name="quadra" value="{{ quadra_filtro }}">{% endif %}
     <input
       class="form-input flex-1"
       id="busca"
       type="search"
       name="busca"
       value="{{ busca }}"
-      placeholder="Digite para localizar um paciente"
-      aria-label="Buscar paciente"
+      placeholder="Digite um paciente, uma casa ou um endereço"
+      aria-label="Buscar paciente ou imóvel"
       autocomplete="off"
+      maxlength="120"
     >
     <div class="flex gap-2">
       <button class="btn-primary" type="submit">Buscar</button>
       {% if busca %}
-        <a class="btn-secondary" href="{{ url_for('index') }}">Limpar</a>
+        <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none, tipo=tipos_filtro or none, ocupacao=ocupacao_filtro or none, quadra=quadra_filtro or none) }}">Limpar</a>
       {% endif %}
     </div>
   </form>
 
   {% if busca %}
-    <div class="mt-4 space-y-2">
-      {% if pacientes_busca %}
-        {% for paciente in pacientes_busca %}
-          <div class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <p class="text-sm font-semibold text-slate-900 truncate">{{ paciente.nome }}</p>
-                {% set status_busca = paciente|status_codigo %}
-                {% if status_busca != 'ativo' %}{{ badge_status(status_busca) }}{% endif %}
+    {# Os dois grupos aparecem mesmo vazios: o operador precisa ver que as duas
+       dimensões foram varridas, e não ficar sem saber se a busca de imóvel
+       simplesmente não existe. #}
+    <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-x-5 gap-y-4">
+      <div id="busca-pacientes">
+        <h3 class="search-group-title">
+          Pacientes <span class="filter-count">{{ pacientes_busca|length }}</span>
+        </h3>
+        {% if pacientes_busca %}
+          <div class="space-y-2 panel-scroll search-results-scroll">
+            {% for paciente in pacientes_busca %}
+              <div class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="text-sm font-semibold text-slate-900 truncate">{{ paciente.nome }}</p>
+                    {% set status_busca = paciente|status_codigo %}
+                    {% if status_busca != 'ativo' %}{{ badge_status(status_busca) }}{% endif %}
+                  </div>
+                  {% if paciente.casa_id %}
+                    <p class="text-xs text-slate-500">{{ paciente|casa_rotulo }}{% if paciente.endereco %} · {{ paciente.endereco }}{% endif %}</p>
+                  {% else %}
+                    <p class="text-xs text-slate-500">Sem casa definida — vincule pela página Pacientes.</p>
+                  {% endif %}
+                </div>
+                {% if paciente.casa_id %}
+                  <a class="btn-secondary house-tile-btn shrink-0" href="{{ url_for('detalhes_casa', casa_id=paciente.casa_id) }}">Abrir</a>
+                {% else %}
+                  <a class="btn-secondary house-tile-btn shrink-0" href="{{ url_for('listar_pacientes', busca=paciente.nome) }}">Definir casa</a>
+                {% endif %}
               </div>
-              {% if paciente.casa_id %}
-                <p class="text-xs text-slate-500">{{ paciente|casa_rotulo }}{% if paciente.endereco %} · {{ paciente.endereco }}{% endif %}</p>
-              {% else %}
-                <p class="text-xs text-slate-500">Sem casa definida — vincule pela página Pacientes.</p>
-              {% endif %}
-            </div>
-            {% if paciente.casa_id %}
-              <a class="btn-secondary shrink-0" href="{{ url_for('detalhes_casa', casa_id=paciente.casa_id) }}">Abrir</a>
-            {% else %}
-              <a class="btn-secondary shrink-0" href="{{ url_for('listar_pacientes', busca=paciente.nome) }}">Definir casa</a>
-            {% endif %}
+            {% endfor %}
           </div>
-        {% endfor %}
-      {% else %}
-        <p class="text-sm text-slate-500">Nenhum paciente encontrado.</p>
-      {% endif %}
+        {% else %}
+          <p class="text-sm text-slate-500">Nenhum paciente encontrado.</p>
+        {% endif %}
+      </div>
+
+      <div id="busca-casas">
+        <h3 class="search-group-title">
+          Casas <span class="filter-count">{{ casas_busca|length }}</span>
+        </h3>
+        {% if casas_busca %}
+          <div class="space-y-2 panel-scroll search-results-scroll">
+            {% for casa in casas_busca %}
+              {% set ativa = casa|casa_ativa %}
+              {% set tipo = casa.tipo_imovel or 'domicilio' %}
+              <div class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3{% if not ativa %} house-card-inativa{% endif %}">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="text-sm font-semibold text-slate-900">
+                      {{ casa|casa_rotulo or ('Sem número · Quadra ' ~ casa.numero_quadra if casa.numero_quadra else 'Sem número · Sem quadra') }}
+                    </p>
+                    {{ selos_casa(casa, ativa, tipo, tipos_imovel_residenciais) }}
+                  </div>
+                  <p class="text-xs text-slate-500 truncate">{{ casa.endereco }}</p>
+                </div>
+                <a class="btn-secondary house-tile-btn shrink-0" href="{{ url_for('detalhes_casa', casa_id=casa.id) }}">Abrir</a>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-sm text-slate-500">Nenhuma casa encontrada.</p>
+        {% endif %}
+      </div>
     </div>
   {% endif %}
 </section>
@@ -126,7 +178,7 @@
       </div>
       <div class="flex items-center gap-2">
         {% if filtro_ativo %}
-          <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none) }}">Limpar filtro</a>
+          <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none, busca=busca or none) }}">Limpar filtro</a>
         {% endif %}
         <a class="btn-secondary house-sort-toggle"
            href="{{ url_for('index', ordem='desc' if ordem == 'asc' else 'asc', busca=busca or none, quadra=quadra_filtro or none, tipo=tipos_filtro or none, ocupacao=ocupacao_filtro or none) }}"
@@ -140,7 +192,8 @@
             Decrescente
           {% endif %}
         </a>
-        <button type="button" class="btn-secondary" data-filter-open>
+        <button type="button" class="btn-secondary" data-dialog-open="filter-dialog"
+                aria-haspopup="dialog" aria-controls="filter-dialog">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
           Filtrar
           {% if filtro_ativo %}<span class="rounded-full bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">{{ tipos_filtro|length + (1 if ocupacao_filtro else 0) + (1 if quadra_filtro else 0) }}</span>{% endif %}
@@ -161,18 +214,7 @@
                 <h3 class="text-base font-bold text-slate-900">Casa {{ casa.numero_casa }}</h3>
               </div>
               <div class="flex flex-wrap justify-end gap-1.5 shrink-0">
-                {% if not ativa %}
-                  <span class="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-bold text-slate-700"
-                        title="{{ casa.motivo_inativacao or 'Fora das contagens e dos relatórios' }}">inativa</span>
-                {% endif %}
-                {% if tipo != 'domicilio' %}
-                  <span class="rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-700">{{ tipo|tipo_imovel }}</span>
-                {% endif %}
-                {% if casa.total_pacientes > 0 %}
-                  <span class="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs font-bold text-blue-700">{{ casa.total_pacientes }} pac.</span>
-                {% elif ativa and tipo in tipos_imovel_residenciais %}
-                  <span class="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-bold text-slate-600">vazia</span>
-                {% endif %}
+                {{ selos_casa(casa, ativa, tipo, tipos_imovel_residenciais) }}
               </div>
             </div>
             <p class="text-sm text-slate-600 flex-1">{{ casa.endereco }}</p>
@@ -194,7 +236,7 @@
       <div class="flex flex-col items-center justify-center text-center py-12">
         <h3 class="text-sm font-bold text-slate-900 mb-1">Nenhuma casa corresponde ao filtro</h3>
         <p class="text-sm text-slate-500 mb-4">Ajuste a seleção de tipos/quadra ou limpe o filtro.</p>
-        <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none) }}">Limpar filtro</a>
+        <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none, busca=busca or none) }}">Limpar filtro</a>
       </div>
     {% else %}
       <div class="flex flex-col items-center justify-center text-center py-12">
@@ -244,9 +286,28 @@
   </section>
 </div>
 
-<!-- Modal: filtrar casas -->
-<div id="filter-dialog" class="filter-dialog" hidden aria-hidden="true">
-  <div class="filter-dialog-backdrop" data-filter-close></div>
+<!-- Comorbidades -->
+<section class="rounded-xl border border-slate-200 bg-white p-5 mt-6">
+  <div class="mb-4">
+    <h2 class="text-sm font-bold text-slate-900">Comorbidades</h2>
+    <p class="text-xs text-slate-500">Resumo dos cadastros do território</p>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
+    {% for condicao, total in stats.comorbidades %}
+      <div class="flex items-center justify-between gap-3 border-b border-slate-100 py-2">
+        <span class="text-sm text-slate-600">{{ condicao }}</span>
+        <strong class="text-sm font-bold {{ 'text-blue-700' if total else 'text-slate-400' }}">{{ total }}</strong>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+{# Modal "Filtrar casas". Fica no fim do bloco, fora do fluxo de leitura: é
+   position:fixed, então a posição no meio do conteúdo não mudava a tela — só
+   partia o painel em dois na origem e na ordem de tabulação. Usa o mecanismo
+   genérico [data-dialog-open] do app.js, o mesmo dos diálogos da casa. #}
+<div id="filter-dialog" class="filter-dialog" data-dialog hidden aria-hidden="true">
+  <div class="filter-dialog-backdrop" data-dialog-close></div>
   <section class="filter-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="filter-dialog-title">
     <form method="get" action="{{ url_for('index') }}">
       {% if busca %}<input type="hidden" name="busca" value="{{ busca }}">{% endif %}
@@ -257,7 +318,7 @@
           <h2 id="filter-dialog-title" class="filter-dialog-title">Filtrar casas</h2>
           <p class="filter-dialog-sub">Recorte a lista por tipo de imóvel, ocupação e quadra — cada opção mostra quantos existem.</p>
         </div>
-        <button type="button" class="a11y-close" data-filter-close aria-label="Fechar">
+        <button type="button" class="a11y-close" data-dialog-close aria-label="Fechar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
           </svg>
@@ -303,26 +364,10 @@
       </div>
 
       <footer class="filter-dialog-foot">
-        <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none) }}">Limpar filtro</a>
+        <a class="btn-secondary" href="{{ url_for('index', ordem=ordem if ordem == 'desc' else none, busca=busca or none) }}">Limpar filtro</a>
         <button type="submit" class="btn-primary">Aplicar filtro</button>
       </footer>
     </form>
   </section>
 </div>
-
-<!-- Comorbidades -->
-<section class="rounded-xl border border-slate-200 bg-white p-5 mt-6">
-  <div class="mb-4">
-    <h2 class="text-sm font-bold text-slate-900">Comorbidades</h2>
-    <p class="text-xs text-slate-500">Resumo dos cadastros do território</p>
-  </div>
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
-    {% for condicao, total in stats.comorbidades %}
-      <div class="flex items-center justify-between gap-3 border-b border-slate-100 py-2">
-        <span class="text-sm text-slate-600">{{ condicao }}</span>
-        <strong class="text-sm font-bold {{ 'text-blue-700' if total else 'text-slate-400' }}">{{ total }}</strong>
-      </div>
-    {% endfor %}
-  </div>
-</section>
 {% endblock %}

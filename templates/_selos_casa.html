@@ -1,0 +1,23 @@
+{# Selos de um imóvel: situação, tipo e ocupação.
+
+   Um lugar só porque o painel mostra o mesmo imóvel em dois lugares — o quadro
+   de casas e o resultado da busca. Escrita a marcação nos dois, "vazia" ganha
+   uma regra num deles e some do outro, e o operador vê dois territórios
+   diferentes na mesma tela.
+
+   `tipos_residenciais` vem do context processor (`tipos_imovel_residenciais`);
+   é parâmetro, e não global, para o macro não depender do que a página injeta. #}
+{% macro selos_casa(casa, ativa, tipo, tipos_residenciais) %}
+  {% if not ativa %}
+    <span class="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-bold text-slate-700"
+          title="{{ casa.motivo_inativacao or 'Fora das contagens e dos relatórios' }}">inativa</span>
+  {% endif %}
+  {% if tipo != 'domicilio' %}
+    <span class="rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-700">{{ tipo|tipo_imovel }}</span>
+  {% endif %}
+  {% if casa.total_pacientes > 0 %}
+    <span class="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs font-bold text-blue-700">{{ casa.total_pacientes }} pac.</span>
+  {% elif ativa and tipo in tipos_residenciais %}
+    <span class="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-bold text-slate-600">vazia</span>
+  {% endif %}
+{% endmacro %}

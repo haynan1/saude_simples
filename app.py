@@ -732,6 +732,18 @@ def apenas_digitos(value):
     return "".join(char for char in str(value or "") if char.isdigit())
 
 
+# Teto da consulta. As duas buscas são O(termos × registros) com comparação
+# aproximada em cada par — barato no que um humano digita, caro no que uma
+# querystring aceita. Sem teto, um GET com 10 mil caracteres viraria minutos de
+# CPU num app que roda em máquina de posto de saúde. 120 caracteres passam o
+# nome mais longo do território com folga.
+BUSCA_TAMANHO_MAXIMO = 120
+
+
+def normalizar_busca(value):
+    return str(value or "").strip()[:BUSCA_TAMANHO_MAXIMO]
+
+
 def paciente_corresponde_busca(paciente, busca):
     busca_normalizada = texto_normalizado(busca).strip()
     busca_digitos = apenas_digitos(busca)
@@ -760,6 +772,150 @@ def paciente_corresponde_busca(paciente, busca):
         return True
 
     return SequenceMatcher(None, busca_normalizada, nome_normalizado).ratio() >= 0.58
+
+
+# ---------------------------------------------------------------------------
+# Busca de imóvel
+#
+# O ACS em campo não procura um registro, procura um lugar: "casa 42", "q3",
+# "Rua das Flores", "terreno baldio". A busca de paciente não serve para isso —
+# ela casa dígitos contra CPF/CNS, então digitar "42" devolvia qualquer
+# documento que contivesse 42 e nenhuma casa.
+#
+# Duas ferramentas, dois trabalhos: a BUSCA localiza e leva até o imóvel (varre
+# o território inteiro, ignora o recorte do modal); o FILTRO recorta o quadro
+# para navegar. Misturar as duas faria a busca de um paciente esvaziar a lista
+# de casas — o operador perderia o quadro sem ter pedido.
+# ---------------------------------------------------------------------------
+
+# Rótulos que o operador digita antes do número. O rótulo sozinho não vira
+# termo de busca: "casa" está no identificador de TODAS as casas, e deixá-lo
+# como termo livre faria qualquer pesquisa casar com o território inteiro.
+ROTULOS_BUSCA_CASA = ("casa",)
+ROTULOS_BUSCA_QUADRA = ("quadra", "qd", "q")
+
+# Piso para a comparação aproximada dos termos de texto. Abaixo de 4 letras a
+# semelhança vira ruído: "rua" e "sua" batem 0.67, acima do limiar usado no
+# nome do paciente. Termo curto casa por conteúdo exato, e só.
+BUSCA_CASA_TAMANHO_MINIMO_APROXIMADO = 4
+
+
+def tokens_busca(value):
+    """Palavras normalizadas de um texto: sem acento, minúsculas e sem
+    pontuação. "Rua das Flores, 42" -> ["rua", "das", "flores", "42"]."""
+    texto = texto_normalizado(value)
+    return "".join(char if char.isalnum() else " " for char in texto).split()
+
+
+def _numero_do_rotulo(token, rotulos):
+    """Número colado ou anunciado por um rótulo.
+
+    Devolve "3" para "q3", "" para "quadra" (o número vem no próximo token) e
+    None quando o token não é rótulo nenhum — os três casos são distintos, por
+    isso "" e None não se confundem aqui."""
+    for rotulo in rotulos:
+        if token == rotulo:
+            return ""
+        if token.startswith(rotulo) and token[len(rotulo):].isdigit():
+            return token[len(rotulo):]
+    return None
+
+
+def interpretar_busca_casa(busca):
+    """Consulta digitada -> (números de casa, números de quadra, termos livres).
+
+    "casa 42 q3 flores" -> (["42"], ["3"], ["flores"]). Rótulo sem número
+    algum é descartado: quem digita só "casa" não pediu recorte nenhum."""
+    tokens = tokens_busca(busca)
+    numeros_casa, numeros_quadra, termos = [], [], []
+    indice = 0
+    while indice < len(tokens):
+        token = tokens[indice]
+        indice += 1
+        for rotulos, destino in (
+            (ROTULOS_BUSCA_CASA, numeros_casa),
+            (ROTULOS_BUSCA_QUADRA, numeros_quadra),
+        ):
+            numero = _numero_do_rotulo(token, rotulos)
+            if numero is None:
+                continue
+            if not numero and indice < len(tokens) and tokens[indice].isdigit():
+                numero = tokens[indice]
+                indice += 1
+            if numero:
+                destino.append(numero)
+            break
+        else:
+            termos.append(token)
+    return numeros_casa, numeros_quadra, termos
+
+
+def _mesmo_numero(valor, alvo):
+    """Compara numericamente quando dá — "07" e 7 são a mesma casa."""
+    if valor in (None, ""):
+        return False
+    try:
+        return int(valor) == int(alvo)
+    except (TypeError, ValueError):
+        return str(valor) == alvo
+
+
+def tokens_identidade_casa(casa):
+    """Tudo por onde um imóvel pode ser reconhecido, em palavras: endereço,
+    "casa N", "quadra N" (ou "sem quadra") e o tipo por extenso."""
+    partes = [_coluna(casa, "endereco") or ""]
+    numero = _coluna(casa, "numero_casa")
+    if numero not in (None, ""):
+        partes.append(f"casa {numero}")
+    quadra = _coluna(casa, "numero_quadra")
+    partes.append(f"quadra {quadra}" if quadra not in (None, "") else "sem quadra")
+    partes.append(tipo_imovel_label(tipo_imovel_de(casa)))
+    return tokens_busca(" ".join(partes))
+
+
+def _termo_encontrado(termo, tokens, texto):
+    # Número casa por palavra inteira, nunca por pedaço: "42" tem que achar a
+    # Casa 42, não a 142 nem o número 420 da rua.
+    if termo.isdigit():
+        return termo in tokens
+    if termo in texto:
+        return True
+    if len(termo) < BUSCA_CASA_TAMANHO_MINIMO_APROXIMADO:
+        return False
+    return any(SequenceMatcher(None, termo, token).ratio() >= 0.62 for token in tokens)
+
+
+def casa_corresponde_consulta(casa, consulta):
+    """Imóvel encontrado por número, quadra, endereço ou tipo.
+
+    Recebe a consulta JÁ interpretada porque quem chama é um laço sobre o
+    território inteiro: reinterpretar a mesma consulta a cada imóvel custava
+    ~40% do tempo da busca, e a consulta não muda no meio do laço.
+
+    Os termos somam (E, não OU): "flores 42" é a Casa 42 da Rua das Flores, e
+    não toda casa da rua mais toda casa 42 do território — a numeração
+    recomeça a cada quadra, então o OU devolveria uma lista inútil."""
+    numeros_casa, numeros_quadra, termos = consulta
+    if not (numeros_casa or numeros_quadra or termos):
+        return False
+
+    numero_casa = _coluna(casa, "numero_casa")
+    if any(not _mesmo_numero(numero_casa, alvo) for alvo in numeros_casa):
+        return False
+
+    numero_quadra = _coluna(casa, "numero_quadra")
+    if any(not _mesmo_numero(numero_quadra, alvo) for alvo in numeros_quadra):
+        return False
+
+    tokens = tokens_identidade_casa(casa)
+    texto = " ".join(tokens)
+    return all(_termo_encontrado(termo, tokens, texto) for termo in termos)
+
+
+def casa_corresponde_busca(casa, busca):
+    """Conveniência para conferir um imóvel só. Em lista, interprete a consulta
+    uma vez e chame `casa_corresponde_consulta` — é o que a rota faz."""
+    return casa_corresponde_consulta(casa, interpretar_busca_casa(busca))
 
 
 def calcular_idade(data_nascimento):
@@ -1428,7 +1584,7 @@ def alterar_senha():
 @app.route("/")
 @login_required
 def index():
-    busca = request.args.get("busca", "").strip()
+    busca = normalizar_busca(request.args.get("busca"))
     # Ordenação da lista de casas pela numeração: crescente (padrão) ou decrescente.
     ordem = request.args.get("ordem", "asc").strip().lower()
     if ordem not in ("asc", "desc"):
@@ -1480,6 +1636,13 @@ def index():
             paciente for paciente in todos_pacientes if paciente_corresponde_busca(paciente, busca)
         ]
     conn.close()
+    # Localizar um imóvel varre o território inteiro, de propósito: quem
+    # procura a Casa 42 quer chegar nela mesmo quando o quadro está recortado
+    # por outro tipo ou por outra quadra.
+    casas_busca = []
+    if busca:
+        consulta = interpretar_busca_casa(busca)
+        casas_busca = [casa for casa in casas if casa_corresponde_consulta(casa, consulta)]
     # Indicadores sempre sobre o território inteiro — o filtro recorta apenas
     # a lista de casas.
     stats = build_dashboard_stats(casas, pacientes)
@@ -1534,6 +1697,7 @@ def index():
         busca=busca,
         ordem=ordem,
         pacientes_busca=pacientes_busca,
+        casas_busca=casas_busca,
         tipos_filtro=tipos_filtro,
         ocupacao_filtro=ocupacao_filtro,
         quadra_filtro=quadra_filtro,
@@ -2227,7 +2391,7 @@ def _janela_paginacao(pagina, total_paginas, vizinhos=1):
 @app.route("/pacientes")
 @login_required
 def listar_pacientes():
-    busca = request.args.get("busca", "").strip()
+    busca = normalizar_busca(request.args.get("busca"))
     status_filtro = request.args.get("status", "").strip()
     if status_filtro not in STATUS_PACIENTE_POR_CODIGO:
         status_filtro = ""

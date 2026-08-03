@@ -29,7 +29,10 @@ pytestmark = [
     ),
 ]
 
-PAGINAS = ["/", "/pacientes", "/casa/1", "/lixeira", "/banco", "/exportar"]
+# "/?busca=casa 1" entra na lista porque o resultado da busca só existe com a
+# busca ativa: os rótulos de grupo, a contagem e os selos do imóvel não estão
+# na tela do painel vazio, e nenhuma outra rota os pintaria.
+PAGINAS = ["/", "/?busca=casa+1", "/pacientes", "/casa/1", "/lixeira", "/banco", "/exportar"]
 
 # Percorre as folhas de texto visíveis, resolve o fundo efetivo subindo pelos
 # ancestrais e devolve só quem fica abaixo do mínimo AA (4,5:1, ou 3:1 para
@@ -112,6 +115,14 @@ def test_contraste_wcag_aa_nos_dois_temas(pagina, servidor):
             alternador = pagina.locator("[data-detalhes-todos]")
             if alternador.count():
                 alternador.click()
+            # Diálogo fechado é `hidden`, e o medidor pula o que não pinta —
+            # sem abrir, o modal nunca foi medido em tema nenhum. Só o gatilho
+            # visível: em /casa/1 os botões moram num menu recolhido.
+            gatilho = pagina.locator("[data-dialog-open]:visible").first
+            if gatilho.count():
+                gatilho.click()
+                pagina.wait_for_selector(".filter-dialog.is-visible")
+                pagina.wait_for_timeout(250)
             for ruim in pagina.evaluate(MEDIR_CONTRASTE):
                 falhas.append(
                     f"[{tema}] {rota} {ruim['razao']}:1 (mín {ruim['minimo']}) "

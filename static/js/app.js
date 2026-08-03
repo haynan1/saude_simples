@@ -161,61 +161,6 @@
   document.addEventListener('DOMContentLoaded', updateExportCount);
 
   // ---------------------------------------------------------------------------
-  // Modal "Filtrar casas" (painel) — delegação: o markup vive dentro do
-  // #app-main e é recriado a cada navegação suave.
-  // ---------------------------------------------------------------------------
-  function filterDialog() {
-    return document.getElementById('filter-dialog');
-  }
-
-  function openFilterDialog() {
-    const dialog = filterDialog();
-    if (!dialog) return;
-    dialog.hidden = false;
-    dialog.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('confirm-dialog-open');
-    requestAnimationFrame(() => dialog.classList.add('is-visible'));
-  }
-
-  function closeFilterDialog() {
-    const dialog = filterDialog();
-    if (!dialog || dialog.hidden) return;
-    dialog.classList.remove('is-visible');
-    dialog.hidden = true;
-    dialog.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('confirm-dialog-open');
-  }
-
-  document.addEventListener('click', (event) => {
-    if (event.target.closest('[data-filter-open]')) {
-      event.preventDefault();
-      openFilterDialog();
-      return;
-    }
-    if (event.target.closest('[data-filter-close]')) {
-      closeFilterDialog();
-      return;
-    }
-    // Link dentro do modal (ex.: "Limpar filtro"): a navegação suave troca o
-    // conteúdo sem recarregar — libera o scroll travado pelo overlay.
-    if (event.target.closest('#filter-dialog a')) {
-      document.body.classList.remove('confirm-dialog-open');
-    }
-  });
-
-  // Aplicar filtro: o form GET é levado pelo smooth-navigation; o modal some
-  // junto com o conteúdo antigo, então só o scroll precisa ser destravado.
-  document.addEventListener('submit', (event) => {
-    if (event.target.closest('#filter-dialog')) {
-      document.body.classList.remove('confirm-dialog-open');
-    }
-  });
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeFilterDialog();
-  });
-
-  // ---------------------------------------------------------------------------
   // Modal "Transferir" (paciente ou família) — um único modal por página; o
   // botão que abre define o destino do POST e o título via data-attributes.
   // ---------------------------------------------------------------------------
@@ -370,6 +315,11 @@
       return;
     }
     if (event.target.closest('[data-dialog-close]')) fecharDialogos();
+    // Link dentro do diálogo (ex.: "Limpar filtro"): a navegação suave troca o
+    // conteúdo sem recarregar — libera o scroll travado pelo overlay.
+    else if (event.target.closest('[data-dialog] a')) {
+      document.body.classList.remove('confirm-dialog-open');
+    }
   });
 
   document.addEventListener('keydown', (event) => {
