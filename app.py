@@ -58,7 +58,7 @@ from db import (
     importar_banco,
     init_db,
     listar_backups,
-    normalizar_nome_pessoa,
+    normalizar_nome_cadastro,
     primeiro_mes_perfil,
     restaurar_backup,
     salvar_perfil_mensal,
@@ -1500,11 +1500,14 @@ FAMILIA_NOME_TAMANHO_MAXIMO = 60
 
 
 def normalizar_nome_familia(value, padrao=""):
-    """Nome do núcleo em uma linha. Vazio cai no padrão sugerido — o operador
-    que não quis nomear não pode ficar com um núcleo sem rótulo, que é
-    justamente o que ele precisa ler para distinguir um do outro."""
-    nome = " ".join(str(value or "").split())[:FAMILIA_NOME_TAMANHO_MAXIMO]
-    return nome or padrao
+    """Nome do núcleo em uma linha, no mesmo padrão dos nomes de pessoa.
+
+    Vazio cai no padrão sugerido — o operador que não quis nomear não pode
+    ficar com um núcleo sem rótulo, que é justamente o que ele precisa ler para
+    distinguir um do outro. O padrão passa pela mesma régua: sugestão nossa não
+    pode ser a única coisa fora do padrão na tela."""
+    nome = normalizar_nome_cadastro(value)[:FAMILIA_NOME_TAMANHO_MAXIMO]
+    return nome or normalizar_nome_cadastro(padrao)
 
 
 def familias_da_casa(conn, casa_id):
@@ -1523,12 +1526,12 @@ def familias_da_casa(conn, casa_id):
 
 
 def proximo_nome_de_familia(familias):
-    """"Família 1", "Família 2"... Sugestão, não imposição: o operador troca por
+    """""FAMÍLIA 1", "FAMÍLIA 2"... Sugestão, não imposição: o operador troca por
     "Fundos" ou pelo sobrenome, que é como ele fala em campo.
 
     Deriva da lista que a página já carregou — contar de novo no banco seria uma
     consulta por abertura de tela para saber o que está na mão."""
-    return f"Família {len(familias) + 1}"
+    return f"FAMÍLIA {len(familias) + 1}"
 
 
 def agrupar_pacientes_por_familia(lista_pacientes):
@@ -1632,8 +1635,8 @@ def inserir_paciente_do_form(casa_id, nome, familia_id=None):
             formatar_telefone(request.form.get("telefone", "")),
             request.form.get("data_nascimento", "").strip(),
             request.form.get("sexo", "").strip(),
-            normalizar_nome_pessoa(request.form.get("nome_pai")),
-            normalizar_nome_pessoa(request.form.get("nome_mae")),
+            normalizar_nome_cadastro(request.form.get("nome_pai")),
+            normalizar_nome_cadastro(request.form.get("nome_mae")),
             normalizar_condicoes(request.form.getlist("condicoes_saude")),
             request.form.get("observacao", "").strip(),
         ),
@@ -2311,7 +2314,7 @@ def cadastrar_paciente(casa_id):
         )
 
     if request.method == "POST":
-        nome = normalizar_nome_pessoa(request.form.get("nome"))
+        nome = normalizar_nome_cadastro(request.form.get("nome"))
         if not nome:
             flash("Informe o nome do paciente.", "danger")
             return reexibir()
@@ -2342,7 +2345,7 @@ def cadastrar_paciente_geral():
     casas_opcoes = get_casas_para_transferencia()
 
     if request.method == "POST":
-        nome = normalizar_nome_pessoa(request.form.get("nome"))
+        nome = normalizar_nome_cadastro(request.form.get("nome"))
         casa_id_raw = request.form.get("casa_id", "").strip()
 
         def render_erro():
@@ -2425,7 +2428,7 @@ def editar_paciente(paciente_id):
         )
 
     if request.method == "POST":
-        nome = normalizar_nome_pessoa(request.form.get("nome"))
+        nome = normalizar_nome_cadastro(request.form.get("nome"))
         if not nome:
             flash("Informe o nome do paciente.", "danger")
             return reexibir()
@@ -2458,8 +2461,8 @@ def editar_paciente(paciente_id):
                 formatar_cpf_ou_cns(request.form.get("cpf", "")),
                 formatar_telefone(request.form.get("telefone", "")),
                 request.form.get("data_nascimento", "").strip(),
-                normalizar_nome_pessoa(request.form.get("nome_pai")),
-                normalizar_nome_pessoa(request.form.get("nome_mae")),
+                normalizar_nome_cadastro(request.form.get("nome_pai")),
+                normalizar_nome_cadastro(request.form.get("nome_mae")),
                 request.form.get("sexo", "").strip(),
                 normalizar_condicoes(request.form.getlist("condicoes_saude")),
                 request.form.get("observacao", "").strip(),
@@ -3419,7 +3422,7 @@ def _inserir_pacientes_importados(registros):
                 VALUES (NULL, ?, ?, ?, ?, ?, '', '', '', '')
                 """,
                 (
-                    normalizar_nome_pessoa(registro["nome"]),
+                    normalizar_nome_cadastro(registro["nome"]),
                     registro["cpf"],
                     registro["telefone"],
                     registro["data_nascimento"],

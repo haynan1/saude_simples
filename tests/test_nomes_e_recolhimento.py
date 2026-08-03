@@ -85,9 +85,86 @@ def test_nome_so_de_espaco_continua_recusado(logged_client):
     assert _nomes() == []
 
 
+def test_rotulo_de_familia_tambem_e_padronizado(logged_client):
+    """Um "Fundos" no meio de uma tela de nomes em caixa alta lê como se fosse
+    de outro sistema."""
+    criar_casa(logged_client)
+    criar_paciente(logged_client, nome="MORADOR DA FRENTE")
+    logged_client.post(
+        "/casa/1/familia/nova", data={"nome_atual": "frente", "nome": "casa de cima"}
+    )
+
+    conn = db.get_db_connection()
+    nomes = [linha["nome"] for linha in conn.execute("SELECT nome FROM familias ORDER BY id")]
+    conn.close()
+    assert nomes == ["FRENTE", "CASA DE CIMA"]
+
+
+def test_renomear_familia_padroniza(logged_client):
+    criar_casa(logged_client)
+    logged_client.post("/casa/1/familia/nova", data={"nome_atual": "A", "nome": "B"})
+    logged_client.post("/familia/1/renomear", data={"nome": "  dos   fundos  "})
+
+    conn = db.get_db_connection()
+    nome = conn.execute("SELECT nome FROM familias WHERE id = 1").fetchone()["nome"]
+    conn.close()
+    assert nome == "DOS FUNDOS"
+
+
+def test_nome_sugerido_ja_sai_no_padrao(logged_client):
+    """Sugestão nossa não pode ser a única coisa fora do padrão na tela — e o
+    operador que aceita a sugestão veria um nome diferente do que digitou."""
+    criar_casa(logged_client)
+    logged_client.post("/casa/1/familia/nova", data={"nome_atual": "", "nome": ""})
+
+    conn = db.get_db_connection()
+    nomes = [linha["nome"] for linha in conn.execute("SELECT nome FROM familias ORDER BY id")]
+    conn.close()
+    assert nomes == ["FAMÍLIA 1", "FAMÍLIA 2"]
+    assert "FAMÍLIA 3" in logged_client.get("/casa/1").get_data(as_text=True)
+
+
 # ---------------------------------------------------------------------------
 # Migração do que já está gravado
 # ---------------------------------------------------------------------------
+def test_familia_ja_gravada_sobe_para_o_padrao(tmp_path):
+    """A tabela de famílias já existe em banco de quem instalou a versão
+    anterior — a migração tem de alcançá-la também."""
+    caminho = tmp_path / "familias.db"
+    conn = sqlite3.connect(caminho)
+    conn.executescript(
+        """
+        CREATE TABLE quadras (id INTEGER PRIMARY KEY AUTOINCREMENT, numero_quadra INTEGER NOT NULL);
+        CREATE TABLE casas (id INTEGER PRIMARY KEY AUTOINCREMENT, endereco TEXT NOT NULL);
+        CREATE TABLE pacientes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, casa_id INTEGER, nome TEXT NOT NULL,
+            cpf TEXT, telefone TEXT, data_nascimento TEXT, sexo TEXT, nome_pai TEXT,
+            nome_mae TEXT, condicoes_saude TEXT, observacao TEXT
+        );
+        CREATE TABLE familias (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, casa_id INTEGER NOT NULL,
+            nome TEXT NOT NULL, criada_em TEXT NOT NULL
+        );
+        INSERT INTO casas (id, endereco) VALUES (1, 'Rua A, 1');
+        INSERT INTO familias (id, casa_id, nome, criada_em) VALUES
+            (1, 1, 'Frente', '2026-01-01T00:00:00'),
+            (2, 1, 'JÁ MAIÚSCULA', '2026-01-01T00:00:01');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    db.DATABASE = str(caminho)
+    db.BACKUP_DIR = str(tmp_path / "backups")
+    db.init_db()
+
+    conn = db.get_db_connection()
+    nomes = [linha["nome"] for linha in conn.execute("SELECT nome FROM familias ORDER BY id")]
+    conn.close()
+    assert nomes == ["FRENTE", "JÁ MAIÚSCULA"]
+
+
+
 def test_banco_existente_sobe_para_o_padrao(tmp_path):
     """O banco do posto já tem nome em caixa mista quando esta versão sobe."""
     caminho = tmp_path / "misto.db"

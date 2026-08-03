@@ -224,13 +224,17 @@ def importar_banco(caminho_origem):
     logger.info("Banco importado com sucesso (senha de acesso local preservada).")
 
 
-def normalizar_nome_pessoa(value):
-    """Nome de pessoa como o cadastro guarda: caixa alta, sem espaço sobrando.
+def normalizar_nome_cadastro(value):
+    """Nome como o cadastro guarda: caixa alta, sem espaço sobrando.
 
     O e-SUS exporta em caixa alta, e é contra ele que a equipe confere lista
     por lista. Nome digitado à mão entrava em qualquer caixa, então a mesma
     pessoa aparecia "Maria de Souza" aqui e "MARIA DE SOUZA" no arquivo — na
     hora de bater as duas listas, são duas.
+
+    Vale para pessoa (morador, pai, mãe) e para o rótulo do núcleo familiar: um
+    "Fundos" no meio de uma tela de nomes em caixa alta lê como se fosse de
+    outro sistema.
 
     Na GRAVAÇÃO, não só na exibição: o dado sai deste sistema em PDF e em
     planilha, e transformar só na tela deixaria o arquivo com a mistura.
@@ -241,9 +245,12 @@ def normalizar_nome_pessoa(value):
     return " ".join(str(value or "").split()).upper()
 
 
-# Colunas que guardam nome de pessoa. Filiação entra: pai e mãe são pessoas, e
-# a ficha do e-SUS traz os três em caixa alta.
+# Colunas de nome, por tabela. Filiação entra porque pai e mãe são pessoas, e a
+# ficha do e-SUS traz os três em caixa alta; `familias.nome` entra porque é o
+# rótulo que aparece ao lado dos moradores, na mesma tela.
 _COLUNAS_DE_NOME = ("nome", "nome_pai", "nome_mae")
+
+_TABELAS_COM_NOME = ("pacientes", "lixeira_pacientes", "familias")
 
 
 def _nomes_a_ajustar(conn, tabela):
@@ -260,7 +267,7 @@ def _nomes_a_ajustar(conn, tabela):
     selecao = ", ".join(["id", *presentes])
     for linha in conn.execute(f"SELECT {selecao} FROM {tabela}").fetchall():
         atuais = [linha[coluna] for coluna in presentes]
-        novos = [normalizar_nome_pessoa(valor) if valor else valor for valor in atuais]
+        novos = [normalizar_nome_cadastro(valor) if valor else valor for valor in atuais]
         if novos != atuais:
             ajustes.append((*novos, linha["id"]))
     return presentes, ajustes
@@ -275,10 +282,7 @@ def _padronizar_nomes_gravados(conn):
 
     Backup antes, e só quando há o que mudar: a transformação não tem volta —
     de "JOSÉ" não se recupera "José"."""
-    pendentes = {
-        tabela: _nomes_a_ajustar(conn, tabela)
-        for tabela in ("pacientes", "lixeira_pacientes")
-    }
+    pendentes = {tabela: _nomes_a_ajustar(conn, tabela) for tabela in _TABELAS_COM_NOME}
     total = sum(len(ajustes) for _colunas, ajustes in pendentes.values())
     if not total:
         return 0
