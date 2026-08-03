@@ -2241,6 +2241,40 @@ body.confirm-dialog-open { overflow: hidden; }
    família — e some sozinho quando o último for realocado. */
 .familia-sem-nucleo { border-style: dashed; }
 
+/* "Registros guardados" recolhido: quem abre a casa vai ver quem mora nela, e
+   estes são os que não moram mais. Fechado ele é uma linha; aberto, o mesmo
+   cartão de antes. */
+.registros-guardados {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  margin-top: 1.5rem;
+  padding: 0 1.25rem 0;
+}
+
+.registros-guardados[open] { padding-bottom: 1.25rem; }
+
+.registros-guardados-topo {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0.9rem 0;
+}
+
+/* O triângulo padrão do <summary> sai nos dois motores — o cursor é o mesmo
+   das outras linhas recolhíveis da página, e dois marcadores confundem. */
+.registros-guardados-topo::-webkit-details-marker { display: none; }
+
+.registros-guardados-topo::marker { content: ""; }
+
+.registros-guardados-topo:focus-visible { border-radius: 0.5rem; outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.registros-guardados[open] .registros-guardados-topo .patient-summary-caret { transform: rotate(90deg); }
+
+.theme-dark .registros-guardados { background: #111827; border-color: #273449; }
+
 .theme-dark .house-menu-item-danger:hover,
 .theme-dark .house-menu-item-danger:focus-visible { background: rgba(220, 38, 38, 0.14); color: #fca5a5; }
 

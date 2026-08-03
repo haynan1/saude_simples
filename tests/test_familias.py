@@ -31,8 +31,8 @@ def _moradores():
 
 def _casa_com_dois_moradores(client):
     criar_casa(client, endereco="Rua A, 1")
-    criar_paciente(client, nome="Pai Da Frente", cpf="11111111111")
-    criar_paciente(client, nome="Filha Da Frente", cpf="22222222222")
+    criar_paciente(client, nome="PAI DA FRENTE", cpf="11111111111")
+    criar_paciente(client, nome="FILHA DA FRENTE", cpf="22222222222")
 
 
 def _casa_repartida(client):
@@ -40,9 +40,9 @@ def _casa_repartida(client):
     _casa_com_dois_moradores(client)
     client.post("/casa/1/familia/nova", data={"nome_atual": "Frente", "nome": "Fundos"})
     fundos = _familias()[1]["id"]
-    criar_paciente(client, nome="Vizinho Do Fundo", cpf="33333333333")
+    criar_paciente(client, nome="VIZINHO DO FUNDO", cpf="33333333333")
     conn = db.get_db_connection()
-    conn.execute("UPDATE pacientes SET familia_id = ? WHERE nome = 'Vizinho Do Fundo'", (fundos,))
+    conn.execute("UPDATE pacientes SET familia_id = ? WHERE nome = 'VIZINHO DO FUNDO'", (fundos,))
     conn.commit()
     conn.close()
     return fundos
@@ -146,13 +146,13 @@ def test_casa_sem_reparticao_nao_mostra_agrupamento(logged_client):
     _casa_com_dois_moradores(logged_client)
     body = logged_client.get("/casa/1").get_data(as_text=True)
     assert "família(s) neste endereço" not in body
-    assert "Pai Da Frente" in body
+    assert "PAI DA FRENTE" in body
     assert _familias() == []
 
 
 def test_morador_de_casa_nao_repartida_fica_sem_nucleo(logged_client):
     _casa_com_dois_moradores(logged_client)
-    assert _moradores()["Pai Da Frente"]["familia_id"] is None
+    assert _moradores()["PAI DA FRENTE"]["familia_id"] is None
 
 
 def test_select_de_situacao_tem_as_opcoes_nas_duas_telas(logged_client):
@@ -194,8 +194,8 @@ def test_moradores_existentes_vao_para_o_primeiro_nucleo(logged_client):
 
     frente = _familias()[0]["id"]
     moradores = _moradores()
-    assert moradores["Pai Da Frente"]["familia_id"] == frente
-    assert moradores["Filha Da Frente"]["familia_id"] == frente
+    assert moradores["PAI DA FRENTE"]["familia_id"] == frente
+    assert moradores["FILHA DA FRENTE"]["familia_id"] == frente
 
 
 def test_nucleo_novo_nasce_vazio(logged_client):
@@ -213,7 +213,7 @@ def test_morador_guardado_acompanha_o_nucleo_de_origem(logged_client):
     logged_client.post("/casa/1/familia/nova", data={"nome_atual": "Frente", "nome": "Fundos"})
 
     frente = _familias()[0]["id"]
-    assert _moradores()["Filha Da Frente"]["familia_id"] == frente
+    assert _moradores()["FILHA DA FRENTE"]["familia_id"] == frente
 
 
 def test_terceira_familia_nao_remexe_nas_anteriores(logged_client):
@@ -221,7 +221,7 @@ def test_terceira_familia_nao_remexe_nas_anteriores(logged_client):
     logged_client.post("/casa/1/familia/nova", data={"nome": "Puxadinho"})
 
     assert [f["nome"] for f in _familias()] == ["Frente", "Fundos", "Puxadinho"]
-    assert _moradores()["Vizinho Do Fundo"]["familia_id"] == fundos
+    assert _moradores()["VIZINHO DO FUNDO"]["familia_id"] == fundos
 
 
 def test_repartir_casa_vazia(logged_client):
@@ -257,12 +257,12 @@ def test_cadastrar_morador_ja_dentro_de_uma_familia(logged_client):
     fundos = _casa_repartida(logged_client)
     resp = logged_client.post(
         "/casa/1/paciente/novo",
-        data={"nome": "Nova Do Fundo", "cpf": "44444444444", "telefone": "",
+        data={"nome": "NOVA DO FUNDO", "cpf": "44444444444", "telefone": "",
               "data_nascimento": "", "sexo": "", "nome_pai": "", "nome_mae": "",
               "observacao": "", "familia_id": str(fundos)},
     )
     assert resp.status_code == 302
-    assert _moradores()["Nova Do Fundo"]["familia_id"] == fundos
+    assert _moradores()["NOVA DO FUNDO"]["familia_id"] == fundos
 
 
 def test_botao_da_familia_abre_o_cadastro_com_ela_escolhida(logged_client):
@@ -275,12 +275,12 @@ def test_editar_move_o_morador_entre_familias_da_casa(logged_client):
     fundos = _casa_repartida(logged_client)
     resp = logged_client.post(
         "/paciente/1/editar",
-        data={"nome": "Pai Da Frente", "cpf": "", "telefone": "", "data_nascimento": "",
+        data={"nome": "PAI DA FRENTE", "cpf": "", "telefone": "", "data_nascimento": "",
               "sexo": "", "nome_pai": "", "nome_mae": "", "observacao": "",
               "familia_id": str(fundos)},
     )
     assert resp.status_code == 302
-    assert _moradores()["Pai Da Frente"]["familia_id"] == fundos
+    assert _moradores()["PAI DA FRENTE"]["familia_id"] == fundos
 
 
 def test_familia_de_outra_casa_e_recusada(logged_client):
@@ -294,23 +294,23 @@ def test_familia_de_outra_casa_e_recusada(logged_client):
 
     logged_client.post(
         "/paciente/1/editar",
-        data={"nome": "Pai Da Frente", "cpf": "", "telefone": "", "data_nascimento": "",
+        data={"nome": "PAI DA FRENTE", "cpf": "", "telefone": "", "data_nascimento": "",
               "sexo": "", "nome_pai": "", "nome_mae": "", "observacao": "",
               "familia_id": str(intrusa)},
     )
-    assert _moradores()["Pai Da Frente"]["familia_id"] != intrusa
+    assert _moradores()["PAI DA FRENTE"]["familia_id"] != intrusa
 
 
 def test_familia_inexistente_no_cadastro_nao_explode(logged_client):
     _casa_repartida(logged_client)
     resp = logged_client.post(
         "/casa/1/paciente/novo",
-        data={"nome": "Sem Nucleo", "cpf": "", "telefone": "", "data_nascimento": "",
+        data={"nome": "SEM NUCLEO", "cpf": "", "telefone": "", "data_nascimento": "",
               "sexo": "", "nome_pai": "", "nome_mae": "", "observacao": "",
               "familia_id": "9999"},
     )
     assert resp.status_code == 302
-    assert _moradores()["Sem Nucleo"]["familia_id"] is None
+    assert _moradores()["SEM NUCLEO"]["familia_id"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -324,8 +324,8 @@ def test_situacao_atinge_so_a_familia_escolhida(logged_client):
     assert resp.status_code == 302
 
     moradores = _moradores()
-    assert moradores["Vizinho Do Fundo"]["status"] == "mudou_se"
-    assert moradores["Pai Da Frente"]["status"] == "ativo"
+    assert moradores["VIZINHO DO FUNDO"]["status"] == "mudou_se"
+    assert moradores["PAI DA FRENTE"]["status"] == "ativo"
 
 
 def test_situacao_sem_familia_continua_valendo_para_a_casa(logged_client):
@@ -346,8 +346,8 @@ def test_transferir_familia_leva_so_o_nucleo(logged_client):
     assert resp.status_code == 302
 
     moradores = _moradores()
-    assert moradores["Vizinho Do Fundo"]["casa_id"] == 2
-    assert moradores["Pai Da Frente"]["casa_id"] == 1
+    assert moradores["VIZINHO DO FUNDO"]["casa_id"] == 2
+    assert moradores["PAI DA FRENTE"]["casa_id"] == 1
 
 
 def test_transferir_limpa_o_nucleo_da_casa_de_origem(logged_client):
@@ -356,14 +356,14 @@ def test_transferir_limpa_o_nucleo_da_casa_de_origem(logged_client):
     fundos = _casa_repartida(logged_client)
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
     logged_client.post("/casa/1/transferir", data={"casa_destino_id": "2", "familia_id": str(fundos)})
-    assert _moradores()["Vizinho Do Fundo"]["familia_id"] is None
+    assert _moradores()["VIZINHO DO FUNDO"]["familia_id"] is None
 
 
 def test_transferir_paciente_sozinho_tambem_limpa_o_nucleo(logged_client):
     _casa_repartida(logged_client)
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
     logged_client.post("/paciente/1/transferir", data={"casa_destino_id": "2"})
-    assert _moradores()["Pai Da Frente"]["familia_id"] is None
+    assert _moradores()["PAI DA FRENTE"]["familia_id"] is None
 
 
 def test_familia_de_outra_casa_nao_transfere(logged_client):
@@ -375,7 +375,7 @@ def test_familia_de_outra_casa_nao_transfere(logged_client):
     logged_client.post(
         "/casa/1/transferir", data={"casa_destino_id": "2", "familia_id": str(intrusa)}
     )
-    assert _moradores()["Pai Da Frente"]["casa_id"] == 1
+    assert _moradores()["PAI DA FRENTE"]["casa_id"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -386,14 +386,14 @@ def test_transferir_paciente_direto_para_uma_familia_do_destino(logged_client):
     editar o morador — dois passos para uma decisão que ele já tinha tomado."""
     fundos = _casa_repartida(logged_client)
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
-    criar_paciente(logged_client, casa_id=2, nome="Recem Chegado", cpf="88888888888")
+    criar_paciente(logged_client, casa_id=2, nome="RECEM CHEGADO", cpf="88888888888")
 
     resp = logged_client.post(
         "/paciente/4/transferir", data={"casa_destino_id": f"1:{fundos}"}
     )
     assert resp.status_code == 302
 
-    morador = _moradores()["Recem Chegado"]
+    morador = _moradores()["RECEM CHEGADO"]
     assert morador["casa_id"] == 1
     assert morador["familia_id"] == fundos
 
@@ -401,7 +401,7 @@ def test_transferir_paciente_direto_para_uma_familia_do_destino(logged_client):
 def test_transferir_familia_inteira_para_uma_familia_do_destino(logged_client):
     _casa_repartida(logged_client)
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
-    criar_paciente(logged_client, casa_id=2, nome="Vem Da Outra", cpf="88888888888")
+    criar_paciente(logged_client, casa_id=2, nome="VEM DA OUTRA", cpf="88888888888")
     frente = _familias()[0]["id"]
 
     resp = logged_client.post(
@@ -409,7 +409,7 @@ def test_transferir_familia_inteira_para_uma_familia_do_destino(logged_client):
     )
     assert resp.status_code == 302
 
-    morador = _moradores()["Vem Da Outra"]
+    morador = _moradores()["VEM DA OUTRA"]
     assert morador["casa_id"] == 1
     assert morador["familia_id"] == frente
 
@@ -425,7 +425,7 @@ def test_mover_morador_entre_familias_do_mesmo_endereco(logged_client):
     )
     assert resp.status_code == 302
 
-    morador = _moradores()["Pai Da Frente"]
+    morador = _moradores()["PAI DA FRENTE"]
     assert morador["casa_id"] == 1
     assert morador["familia_id"] == fundos
 
@@ -464,7 +464,7 @@ def test_juntar_duas_familias_do_mesmo_endereco(logged_client):
         data={"casa_destino_id": f"1:{frente}", "familia_id": str(fundos)},
     )
     assert resp.status_code == 302
-    assert _moradores()["Vizinho Do Fundo"]["familia_id"] == frente
+    assert _moradores()["VIZINHO DO FUNDO"]["familia_id"] == frente
 
 
 def test_confirmacao_diz_a_familia_de_destino(logged_client):
@@ -482,7 +482,7 @@ def test_destino_sem_familia_continua_valendo(logged_client):
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
     logged_client.post("/paciente/1/transferir", data={"casa_destino_id": "2"})
 
-    morador = _moradores()["Pai Da Frente"]
+    morador = _moradores()["PAI DA FRENTE"]
     assert morador["casa_id"] == 2
     assert morador["familia_id"] is None
 
@@ -492,12 +492,12 @@ def test_familia_de_destino_de_outra_casa_e_ignorada(logged_client):
     terceiro domicílio não pode prender o morador lá."""
     fundos = _casa_repartida(logged_client)
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
-    criar_paciente(logged_client, casa_id=2, nome="Alvo Do Forjado", cpf="88888888888")
+    criar_paciente(logged_client, casa_id=2, nome="ALVO DO FORJADO", cpf="88888888888")
 
     # Casa de destino 2, mas núcleo da casa 1.
     logged_client.post("/paciente/4/transferir", data={"casa_destino_id": f"2:{fundos}"})
 
-    morador = _moradores()["Alvo Do Forjado"]
+    morador = _moradores()["ALVO DO FORJADO"]
     assert morador["casa_id"] == 2
     assert morador["familia_id"] is None
 
@@ -506,7 +506,7 @@ def test_destino_malformado_e_recusado(logged_client):
     _casa_repartida(logged_client)
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
     logged_client.post("/paciente/1/transferir", data={"casa_destino_id": "2:abc"})
-    assert _moradores()["Pai Da Frente"]["casa_id"] == 1
+    assert _moradores()["PAI DA FRENTE"]["casa_id"] == 1
 
 
 @pytest.mark.parametrize(
@@ -522,7 +522,7 @@ def test_destino_hostil_nao_derruba_a_requisicao(logged_client, destino):
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
     resp = logged_client.post("/paciente/1/transferir", data={"casa_destino_id": destino})
     assert resp.status_code == 302
-    assert _moradores()["Pai Da Frente"]["casa_id"] == 1
+    assert _moradores()["PAI DA FRENTE"]["casa_id"] == 1
 
 
 def test_id_gigante_em_qualquer_rota_nao_derruba(logged_client):
@@ -567,7 +567,7 @@ def test_obito_nao_fica_listado_na_casa(logged_client):
     logged_client.get("/casa/1")  # consome o flash da mudança (contém o nome)
 
     body = logged_client.get("/casa/1").get_data(as_text=True)
-    assert "Filha Da Frente" not in body
+    assert "FILHA DA FRENTE" not in body
 
 
 def test_quem_se_mudou_continua_guardado_na_casa(logged_client):
@@ -577,7 +577,7 @@ def test_quem_se_mudou_continua_guardado_na_casa(logged_client):
 
     body = logged_client.get("/casa/1").get_data(as_text=True)
     assert "Registros guardados" in body
-    assert "Filha Da Frente" in body
+    assert "FILHA DA FRENTE" in body
 
 
 def test_a_casa_diz_onde_o_obito_foi_parar(logged_client):
@@ -595,10 +595,10 @@ def test_obito_continua_inteiro_no_banco_e_na_lista(logged_client):
     _casa_com_dois_moradores(logged_client)
     logged_client.post("/paciente/2/status", data={"status": "obito"})
 
-    morador = _moradores()["Filha Da Frente"]
+    morador = _moradores()["FILHA DA FRENTE"]
     assert morador["casa_id"] == 1        # o vínculo com a casa é preservado
     assert morador["status"] == "obito"
-    assert "Filha Da Frente" in logged_client.get("/pacientes?status=obito").get_data(as_text=True)
+    assert "FILHA DA FRENTE" in logged_client.get("/pacientes?status=obito").get_data(as_text=True)
 
 
 def test_obito_sai_tambem_do_cartao_da_familia(logged_client):
@@ -606,7 +606,7 @@ def test_obito_sai_tambem_do_cartao_da_familia(logged_client):
     logged_client.post("/paciente/3/status", data={"status": "obito"})
     logged_client.get("/casa/1")  # consome o flash da mudança (contém o nome)
     body = logged_client.get("/casa/1").get_data(as_text=True)
-    assert "Vizinho Do Fundo" not in body
+    assert "VIZINHO DO FUNDO" not in body
     assert "registro(s) de óbito" in body
 
 
@@ -637,7 +637,7 @@ def test_desfazer_nucleo_nao_apaga_morador(logged_client):
     resp = logged_client.post(f"/familia/{fundos}/excluir")
     assert resp.status_code == 302
 
-    morador = _moradores()["Vizinho Do Fundo"]
+    morador = _moradores()["VIZINHO DO FUNDO"]
     assert morador["casa_id"] == 1
     assert morador["familia_id"] is None
 
@@ -664,7 +664,7 @@ def test_moradores_sem_nucleo_aparecem_na_tela(logged_client):
 
     body = logged_client.get("/casa/1").get_data(as_text=True)
     assert "Sem família" in body
-    assert "Vizinho Do Fundo" in body
+    assert "VIZINHO DO FUNDO" in body
 
 
 def test_registro_guardado_diz_de_qual_familia_era(logged_client):
@@ -676,7 +676,7 @@ def test_registro_guardado_diz_de_qual_familia_era(logged_client):
     )
     body = logged_client.get("/casa/1").get_data(as_text=True)
     guardados = body[body.index("Registros guardados"):]
-    assert "Vizinho Do Fundo" in guardados
+    assert "VIZINHO DO FUNDO" in guardados
     assert "Fundos" in guardados
 
 
@@ -690,9 +690,9 @@ def test_ordem_das_familias_e_a_mesma_na_tela_e_no_pdf(logged_client):
     # "Zebra" nasce primeiro: por nome ela viria depois, por criação vem antes.
     logged_client.post("/casa/1/familia/nova", data={"nome_atual": "Zebra", "nome": "Abelha"})
     abelha = _familias()[1]["id"]
-    criar_paciente(logged_client, nome="Morador Da Abelha", cpf="99999999999")
+    criar_paciente(logged_client, nome="MORADOR DA ABELHA", cpf="99999999999")
     conn = db.get_db_connection()
-    conn.execute("UPDATE pacientes SET familia_id = ? WHERE nome = 'Morador Da Abelha'", (abelha,))
+    conn.execute("UPDATE pacientes SET familia_id = ? WHERE nome = 'MORADOR DA ABELHA'", (abelha,))
     conn.commit()
     conn.close()
 
@@ -718,7 +718,7 @@ def test_lixeira_devolve_o_morador_a_familia_de_origem(logged_client):
     fundos = _casa_repartida(logged_client)
     logged_client.post("/paciente/3/excluir")
     logged_client.post("/lixeira/3/restaurar")
-    assert _moradores()["Vizinho Do Fundo"]["familia_id"] == fundos
+    assert _moradores()["VIZINHO DO FUNDO"]["familia_id"] == fundos
 
 
 def test_lixeira_restaura_sem_familia_se_o_nucleo_sumiu(logged_client):
@@ -732,7 +732,7 @@ def test_lixeira_restaura_sem_familia_se_o_nucleo_sumiu(logged_client):
     resp = logged_client.post("/lixeira/3/restaurar")
     assert resp.status_code == 302
 
-    morador = _moradores()["Vizinho Do Fundo"]
+    morador = _moradores()["VIZINHO DO FUNDO"]
     assert morador["casa_id"] == 1
     assert morador["familia_id"] is None
 
@@ -750,9 +750,9 @@ def test_indicador_conta_nucleos_e_nao_casas(logged_client):
 
     logged_client.post("/casa/1/familia/nova", data={"nome_atual": "Frente", "nome": "Fundos"})
     fundos = _familias()[1]["id"]
-    criar_paciente(logged_client, nome="Vizinho Do Fundo", cpf="33333333333")
+    criar_paciente(logged_client, nome="VIZINHO DO FUNDO", cpf="33333333333")
     conn = db.get_db_connection()
-    conn.execute("UPDATE pacientes SET familia_id = ? WHERE nome = 'Vizinho Do Fundo'", (fundos,))
+    conn.execute("UPDATE pacientes SET familia_id = ? WHERE nome = 'VIZINHO DO FUNDO'", (fundos,))
     conn.commit()
     conn.close()
 
@@ -790,4 +790,4 @@ def test_pdf_separa_as_familias_do_mesmo_endereco(logged_client):
     texto = texto_pdf(logged_client.get("/exportar/pdf").data)
     assert "Frente" in texto
     assert "Fundos" in texto
-    assert "Vizinho Do Fundo" in texto
+    assert "VIZINHO DO FUNDO" in texto

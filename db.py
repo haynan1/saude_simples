@@ -224,6 +224,75 @@ def importar_banco(caminho_origem):
     logger.info("Banco importado com sucesso (senha de acesso local preservada).")
 
 
+def normalizar_nome_pessoa(value):
+    """Nome de pessoa como o cadastro guarda: caixa alta, sem espaço sobrando.
+
+    O e-SUS exporta em caixa alta, e é contra ele que a equipe confere lista
+    por lista. Nome digitado à mão entrava em qualquer caixa, então a mesma
+    pessoa aparecia "Maria de Souza" aqui e "MARIA DE SOUZA" no arquivo — na
+    hora de bater as duas listas, são duas.
+
+    Na GRAVAÇÃO, não só na exibição: o dado sai deste sistema em PDF e em
+    planilha, e transformar só na tela deixaria o arquivo com a mistura.
+
+    `.upper()` do Python respeita acento ("josé" -> "JOSÉ"). O `UPPER()` do
+    SQLite não — ele só mexe em A-Z, e devolveria "JOSé". Por isso a migração
+    abaixo é feita em Python, linha a linha, e não num UPDATE só."""
+    return " ".join(str(value or "").split()).upper()
+
+
+# Colunas que guardam nome de pessoa. Filiação entra: pai e mãe são pessoas, e
+# a ficha do e-SUS traz os três em caixa alta.
+_COLUNAS_DE_NOME = ("nome", "nome_pai", "nome_mae")
+
+
+def _nomes_a_ajustar(conn, tabela):
+    """(colunas, linhas) que ainda não estão no padrão. Só LÊ.
+
+    A comparação é em Python porque `UPPER()` do SQLite só mexe em A-Z: por ele,
+    "JOSÉ" nunca chegaria ao padrão e a migração se repetiria a cada boot."""
+    colunas = {row["name"] for row in conn.execute(f"PRAGMA table_info({tabela})")}
+    presentes = [coluna for coluna in _COLUNAS_DE_NOME if coluna in colunas]
+    if not presentes:
+        return [], []
+
+    ajustes = []
+    selecao = ", ".join(["id", *presentes])
+    for linha in conn.execute(f"SELECT {selecao} FROM {tabela}").fetchall():
+        atuais = [linha[coluna] for coluna in presentes]
+        novos = [normalizar_nome_pessoa(valor) if valor else valor for valor in atuais]
+        if novos != atuais:
+            ajustes.append((*novos, linha["id"]))
+    return presentes, ajustes
+
+
+def _padronizar_nomes_gravados(conn):
+    """Sobe para caixa alta os nomes que já estão no banco.
+
+    Roda no boot e ao importar/restaurar um banco — que é justamente quando
+    entra cadastro digitado noutra máquina, em qualquer caixa. Idempotente: na
+    segunda vez não acha nada a mudar e não escreve nada.
+
+    Backup antes, e só quando há o que mudar: a transformação não tem volta —
+    de "JOSÉ" não se recupera "José"."""
+    pendentes = {
+        tabela: _nomes_a_ajustar(conn, tabela)
+        for tabela in ("pacientes", "lixeira_pacientes")
+    }
+    total = sum(len(ajustes) for _colunas, ajustes in pendentes.values())
+    if not total:
+        return 0
+
+    criar_backup("antes_padronizar_nomes")
+    for tabela, (colunas, ajustes) in pendentes.items():
+        if not ajustes:
+            continue
+        atribuicoes = ", ".join(f"{coluna} = ?" for coluna in colunas)
+        conn.executemany(f"UPDATE {tabela} SET {atribuicoes} WHERE id = ?", ajustes)
+    logger.info("Nomes padronizados em caixa alta: %s registro(s).", total)
+    return total
+
+
 def init_db():
     conn = get_db_connection()
     conn.execute(
@@ -398,6 +467,11 @@ def init_db():
     # painel e o ON DELETE CASCADE viram full scans conforme a base cresce.
     conn.execute("CREATE INDEX IF NOT EXISTS idx_casas_quadra_id ON casas(quadra_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_pacientes_casa_id ON pacientes(casa_id)")
+    # Esquema consolidado ANTES de mexer em dado: o passo seguinte pode precisar
+    # de backup, e backup abre outra conexão no mesmo arquivo — com DDL pendente
+    # nesta, ele veria um banco pela metade.
+    conn.commit()
+    _padronizar_nomes_gravados(conn)
     conn.commit()
     conn.close()
 

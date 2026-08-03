@@ -164,8 +164,12 @@ def test_xss_nome_de_paciente_escapado(logged_client):
     criar_casa(logged_client)
     criar_paciente(logged_client, nome="<script>alert('xss')</script>", observacao="<img src=x onerror=alert(1)>")
     body = logged_client.get("/casa/1").get_data(as_text=True)
-    assert "<script>alert('xss')</script>" not in body
-    assert "&lt;script&gt;" in body
+    # O cadastro grava nome em caixa alta, então o payload sai como <SCRIPT>. O
+    # que importa não muda: os sinais viraram entidade e nenhuma tag chegou à
+    # página. A checagem em minúscula é mais ampla que a de antes — pega o
+    # payload em qualquer caixa, não só na que foi enviada.
+    assert "<script>alert" not in body.lower()
+    assert "&lt;SCRIPT&gt;" in body
     assert "<img src=x onerror" not in body
 
 
@@ -373,8 +377,8 @@ def test_xss_via_csv_importado_escapado(logged_client):
     assert resp.status_code == 302
 
     body = logged_client.get("/pacientes").get_data(as_text=True)
-    assert "<script>alert('xss')</script>" not in body
-    assert "&lt;script&gt;" in body
+    assert "<script>alert" not in body.lower()
+    assert "&lt;SCRIPT&gt;" in body
     body_casa = logged_client.get("/").get_data(as_text=True)
     assert "<img src=x onerror" not in body_casa
 

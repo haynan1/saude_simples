@@ -119,7 +119,7 @@ def test_restaurar_nome_invalido_rejeitado(logged_client):
 # ---------------------------------------------------------------------------
 def test_importar_banco_substitui_dados_e_preserva_senha(logged_client, tmp_path):
     criar_casa(logged_client, endereco="Rua Antiga, 1")
-    criar_paciente(logged_client, nome="Paciente Antigo")
+    criar_paciente(logged_client, nome="PACIENTE ANTIGO")
 
     caminho = _banco_sqlite_valido(tmp_path)
     with open(caminho, "rb") as arquivo:
@@ -131,8 +131,8 @@ def test_importar_banco_substitui_dados_e_preserva_senha(logged_client, tmp_path
     assert resp.status_code == 302
 
     body = logged_client.get("/casa/1").get_data(as_text=True)
-    assert "Paciente Importado" in body
-    assert "Paciente Antigo" not in body
+    assert "PACIENTE IMPORTADO" in body
+    assert "PACIENTE ANTIGO" not in body
 
     # Backup pré-importação criado; senha local preservada.
     assert any("antes_importar" in n for n in _nomes_backups())

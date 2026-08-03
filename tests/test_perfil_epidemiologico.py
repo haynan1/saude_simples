@@ -20,7 +20,7 @@ def _seed_territorio(client):
     criar_casa(client)
     criar_paciente(
         client,
-        nome="Mulher Hipertensa Fumante",
+        nome="MULHER HIPERTENSA FUMANTE",
         cpf="11111111111",
         sexo="Feminino",
         data_nascimento="1950-05-10",  # idosa
@@ -28,7 +28,7 @@ def _seed_territorio(client):
     )
     criar_paciente(
         client,
-        nome="Homem Diabetico",
+        nome="HOMEM DIABETICO",
         cpf="22222222222",
         sexo="Masculino",
         data_nascimento="1990-05-10",
@@ -36,7 +36,7 @@ def _seed_territorio(client):
     )
     criar_paciente(
         client,
-        nome="Bebe da Casa",
+        nome="BEBE DA CASA",
         cpf="33333333333",
         sexo="Masculino",
         data_nascimento=datetime.now().strftime("%Y-01-10"),  # 0 a 2 anos

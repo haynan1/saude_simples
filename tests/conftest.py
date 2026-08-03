@@ -78,7 +78,7 @@ def criar_casa(client, endereco="Rua A, 1", numero="1", quadra_id=""):
 
 def criar_paciente(client, casa_id=1, **overrides):
     data = {
-        "nome": "Paciente Teste",
+        "nome": "PACIENTE TESTE",
         "cpf": "12345678901",
         "telefone": "63999998888",
         "data_nascimento": "1990-05-10",

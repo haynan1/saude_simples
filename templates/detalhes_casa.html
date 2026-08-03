@@ -252,11 +252,18 @@
 {% endif %}
 
 {% if pacientes_inativos %}
-  <section class="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-    <div class="mb-4">
-      <h2 class="text-sm font-bold text-slate-900">Registros guardados</h2>
-      <p class="text-xs text-slate-500">Quem se mudou ou saiu da área — o cadastro é preservado, fora das contagens da casa.</p>
-    </div>
+  {# <details> nativo, e não um recolhível de JavaScript: já vem com teclado,
+     leitor de tela e o estado certo antes de qualquer script rodar — inclusive
+     quando o navegador procura texto na página. Fechado por padrão: quem abre a
+     casa vai ver quem mora nela, e estes são os que não moram mais. A contagem
+     fica no rótulo, para o recolhimento não esconder que existe algo aqui. #}
+  <details class="registros-guardados">
+    <summary class="registros-guardados-topo">
+      <svg class="patient-summary-caret" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+      <span class="text-sm font-bold text-slate-900">Registros guardados</span>
+      <span class="filter-count">{{ pacientes_inativos|length }}</span>
+    </summary>
+    <p class="text-xs text-slate-500 mb-4">Quem se mudou ou saiu da área — o cadastro é preservado, fora das contagens da casa.</p>
     <div class="space-y-2">
       {% for paciente in pacientes_inativos %}
         {% set status = paciente|status_codigo %}
@@ -298,7 +305,7 @@
         </div>
       {% endfor %}
     </div>
-  </section>
+  </details>
 {% endif %}
 
 {# O óbito sai da tela da casa, não do sistema: a tela da casa é de quem bate na

@@ -47,14 +47,14 @@ def test_editar_paciente_sem_casa_funciona(logged_client):
     _inserir_sem_casa()
     assert logged_client.get("/paciente/1/editar").status_code == 200
 
-    resp = logged_client.post("/paciente/1/editar", data={"nome": "Nome Corrigido"})
+    resp = logged_client.post("/paciente/1/editar", data={"nome": "NOME CORRIGIDO"})
     assert resp.status_code == 302
     assert "/pacientes" in resp.headers["Location"]
 
     conn = db.get_db_connection()
     nome = conn.execute("SELECT nome FROM pacientes WHERE id = 1").fetchone()["nome"]
     conn.close()
-    assert nome == "Nome Corrigido"
+    assert nome == "NOME CORRIGIDO"
 
 
 def test_excluir_paciente_sem_casa_funciona(logged_client):

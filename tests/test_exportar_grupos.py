@@ -9,23 +9,23 @@ def _semear_territorio(logged_client):
     criar_casa(logged_client)
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
     criar_paciente(
-        logged_client, nome="Idoso Com Diabetes", cpf="11111111111",
+        logged_client, nome="IDOSO COM DIABETES", cpf="11111111111",
         data_nascimento="1950-01-01", sexo="Masculino", condicoes_saude=["diabetes"],
     )
     criar_paciente(
-        logged_client, nome="Idosa Sem Condicao", cpf="22222222222",
+        logged_client, nome="IDOSA SEM CONDICAO", cpf="22222222222",
         data_nascimento="1948-06-15", sexo="Feminino",
     )
     criar_paciente(
-        logged_client, nome="Crianca Da Casa", cpf="33333333333",
+        logged_client, nome="CRIANCA DA CASA", cpf="33333333333",
         data_nascimento="2020-03-10", sexo="Feminino",
     )
     criar_paciente(
-        logged_client, nome="Sem Sexo Informado", cpf="44444444444",
+        logged_client, nome="SEM SEXO INFORMADO", cpf="44444444444",
         data_nascimento="1990-01-01", sexo="",
     )
     criar_paciente(
-        logged_client, casa_id=2, nome="Jovem Com Diabetes", cpf="55555555555",
+        logged_client, casa_id=2, nome="JOVEM COM DIABETES", cpf="55555555555",
         data_nascimento="2000-05-05", sexo="Masculino", condicoes_saude=["diabetes"],
     )
 
@@ -39,11 +39,11 @@ def test_recorte_criancas_0_a_2_separado(logged_client):
 
     criar_casa(logged_client)
     criar_paciente(
-        logged_client, nome="Bebe Do Territorio", cpf="66666666666",
+        logged_client, nome="BEBE DO TERRITORIO", cpf="66666666666",
         data_nascimento=datetime.now().strftime("%Y-01-10"), sexo="Feminino",
     )
     criar_paciente(
-        logged_client, nome="Crianca De Sete Anos", cpf="77777777777",
+        logged_client, nome="CRIANCA DE SETE ANOS", cpf="77777777777",
         data_nascimento="2019-03-10", sexo="Masculino",
     )
     data = logged_client.get("/exportar/preview?grupos=criancas_0_2").get_json()
@@ -54,8 +54,8 @@ def test_recorte_criancas_0_a_2_separado(logged_client):
     texto = texto_pdf(
         logged_client.get("/exportar/pdf?filtrar=1&grupos=criancas_0_2").data
     )
-    assert "Bebe Do Territorio" in texto
-    assert "Crianca De Sete Anos" not in texto
+    assert "BEBE DO TERRITORIO" in texto
+    assert "CRIANCA DE SETE ANOS" not in texto
 
 
 def test_uniao_de_grupos(logged_client):
@@ -84,7 +84,7 @@ def test_sexo_nao_informado_fora_de_homens_e_mulheres(logged_client):
     ambos = logged_client.get("/exportar/preview?grupos=homens&grupos=mulheres").get_json()
     assert homens["stats"]["total_pacientes"] == 2
     assert mulheres["stats"]["total_pacientes"] == 2
-    assert ambos["stats"]["total_pacientes"] == 4  # "Sem Sexo Informado" fora
+    assert ambos["stats"]["total_pacientes"] == 4  # "SEM SEXO INFORMADO" fora
 
 
 def test_casas_apenas_com_pacientes_no_recorte(logged_client):

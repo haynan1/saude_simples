@@ -51,13 +51,13 @@ def test_ficha_completa_sai_no_pdf(logged_client):
     criar_paciente(
         logged_client,
         nome="MARIA DA FICHA COMPLETA",
-        nome_mae="Terezinha da Ficha",
+        nome_mae="TEREZINHA DA FICHA",
         observacao="Acamada, visita quinzenal",
         condicoes_saude=["diabetes"],
     )
     texto = ficha_lida(logged_client)
     assert "MARIA DA FICHA COMPLETA" in texto
-    assert "Mãe Terezinha da Ficha" in texto
+    assert "Mãe TEREZINHA DA FICHA" in texto
     assert "Observação Acamada, visita quinzenal" in texto
     assert "Condições Tem diabetes" in texto
 

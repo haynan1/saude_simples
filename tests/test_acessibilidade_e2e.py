@@ -110,6 +110,12 @@ def _povoar():
         "INSERT INTO pacientes (id, casa_id, familia_id, nome, data_nascimento, status)"
         " VALUES (3, 1, 1, 'AVO BENEDITA', '1931-05-12', 'obito')"
     )
+    # Quem se mudou é o que pinta "Registros guardados" — sem um registro
+    # guardado o bloco recolhível não existe na página e não seria medido.
+    conn.execute(
+        "INSERT INTO pacientes (id, casa_id, familia_id, nome, data_nascimento, status)"
+        " VALUES (4, 1, 2, 'CARLOS QUE MUDOU', '1975-06-20', 'mudou_se')"
+    )
     conn.commit()
     conn.close()
 
@@ -135,6 +141,10 @@ def test_contraste_wcag_aa_nos_dois_temas(pagina, servidor):
             alternador = pagina.locator("[data-detalhes-todos]")
             if alternador.count():
                 alternador.click()
+            # <details> fechado não pinta o conteúdo, e o medidor pula o que não
+            # pinta: sem abrir, só o rótulo entraria na conta.
+            for recolhivel in pagina.locator("details:not([open]) > summary").all():
+                recolhivel.click()
             # Diálogo fechado é `hidden`, e o medidor pula o que não pinta —
             # sem abrir, o modal nunca foi medido em tema nenhum. Só o gatilho
             # visível: em /casa/1 os botões moram num menu recolhido.

@@ -24,9 +24,9 @@ def test_status_padrao_e_ativo(logged_client):
 
 def test_pagina_pacientes_lista_todos(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Maria Aparecida")
+    criar_paciente(logged_client, nome="MARIA APARECIDA")
     body = logged_client.get("/pacientes").get_data(as_text=True)
-    assert "Maria Aparecida" in body
+    assert "MARIA APARECIDA" in body
     assert "Importar e-SUS" in body
 
 
@@ -34,22 +34,22 @@ def test_filtro_por_status_e_quadra(logged_client):
     criar_quadra(logged_client, "1")
     criar_casa(logged_client, quadra_id="1")
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
-    criar_paciente(logged_client, casa_id=1, nome="Ana Da Quadra", cpf="11111111111")
-    criar_paciente(logged_client, casa_id=2, nome="Bruno Sem Quadra", cpf="22222222222")
+    criar_paciente(logged_client, casa_id=1, nome="ANA DA QUADRA", cpf="11111111111")
+    criar_paciente(logged_client, casa_id=2, nome="BRUNO SEM QUADRA", cpf="22222222222")
     logged_client.post("/paciente/2/status", data={"status": "mudou_se"})
     logged_client.get("/pacientes")  # consome o flash do POST (contém o nome)
 
     body = logged_client.get("/pacientes?status=ativo").get_data(as_text=True)
-    assert "Ana Da Quadra" in body and "Bruno Sem Quadra" not in body
+    assert "ANA DA QUADRA" in body and "BRUNO SEM QUADRA" not in body
 
     body = logged_client.get("/pacientes?status=mudou_se").get_data(as_text=True)
-    assert "Bruno Sem Quadra" in body and "Ana Da Quadra" not in body
+    assert "BRUNO SEM QUADRA" in body and "ANA DA QUADRA" not in body
 
     body = logged_client.get("/pacientes?quadra=1").get_data(as_text=True)
-    assert "Ana Da Quadra" in body and "Bruno Sem Quadra" not in body
+    assert "ANA DA QUADRA" in body and "BRUNO SEM QUADRA" not in body
 
     body = logged_client.get("/pacientes?quadra=0").get_data(as_text=True)
-    assert "Bruno Sem Quadra" in body and "Ana Da Quadra" not in body
+    assert "BRUNO SEM QUADRA" in body and "ANA DA QUADRA" not in body
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ def test_filtro_por_status_e_quadra(logged_client):
 # ---------------------------------------------------------------------------
 def test_marcar_mudou_se_preserva_cadastro_fora_das_contagens(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Carlos Mudante")
+    criar_paciente(logged_client, nome="CARLOS MUDANTE")
     resp = logged_client.post("/paciente/1/status", data={"status": "mudou_se"})
     assert resp.status_code == 302
 
@@ -74,7 +74,7 @@ def test_marcar_mudou_se_preserva_cadastro_fora_das_contagens(logged_client):
 def test_obito_guardado_e_sem_transferencia(logged_client):
     criar_casa(logged_client)
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
-    criar_paciente(logged_client, nome="Dona Falecida")
+    criar_paciente(logged_client, nome="DONA FALECIDA")
     logged_client.post("/paciente/1/status", data={"status": "obito"})
     assert _status_de()["status"] == "obito"
 
@@ -106,13 +106,13 @@ def test_reativar_paciente(logged_client):
 def test_cadastrar_paciente_sem_casa_pela_lista(logged_client):
     resp = logged_client.post(
         "/pacientes/novo",
-        data={"nome": "Novo Sem Casa", "cpf": "12345678901", "casa_id": ""},
+        data={"nome": "NOVO SEM CASA", "cpf": "12345678901", "casa_id": ""},
     )
     assert resp.status_code == 302
     assert "/pacientes" in resp.headers["Location"]
 
     conn = db.get_db_connection()
-    row = conn.execute("SELECT casa_id, cpf FROM pacientes WHERE nome = 'Novo Sem Casa'").fetchone()
+    row = conn.execute("SELECT casa_id, cpf FROM pacientes WHERE nome = 'NOVO SEM CASA'").fetchone()
     conn.close()
     assert row["casa_id"] is None
     assert row["cpf"] == "123.456.789-01"
@@ -122,13 +122,13 @@ def test_cadastrar_paciente_com_casa_pela_lista(logged_client):
     criar_casa(logged_client)
     resp = logged_client.post(
         "/pacientes/novo",
-        data={"nome": "Novo Com Casa", "cpf": "12345678901", "casa_id": "1"},
+        data={"nome": "NOVO COM CASA", "cpf": "12345678901", "casa_id": "1"},
     )
     assert resp.status_code == 302
 
     conn = db.get_db_connection()
     casa_id = conn.execute(
-        "SELECT casa_id FROM pacientes WHERE nome = 'Novo Com Casa'"
+        "SELECT casa_id FROM pacientes WHERE nome = 'NOVO COM CASA'"
     ).fetchone()["casa_id"]
     conn.close()
     assert casa_id == 1
@@ -136,17 +136,17 @@ def test_cadastrar_paciente_com_casa_pela_lista(logged_client):
 
 def test_cadastrar_pela_lista_valida_casa_e_documento(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Titular", cpf="12345678901")
+    criar_paciente(logged_client, nome="TITULAR", cpf="12345678901")
 
     # Casa inexistente: re-render com erro, nada gravado.
     resp = logged_client.post(
-        "/pacientes/novo", data={"nome": "Casa Fantasma", "casa_id": "99"}
+        "/pacientes/novo", data={"nome": "CASA FANTASMA", "casa_id": "99"}
     )
     assert resp.status_code == 200
 
     # CPF duplicado: rejeitado.
     resp = logged_client.post(
-        "/pacientes/novo", data={"nome": "Impostor", "cpf": "123.456.789-01", "casa_id": ""}
+        "/pacientes/novo", data={"nome": "IMPOSTOR", "cpf": "123.456.789-01", "casa_id": ""}
     )
     assert resp.status_code == 200
 
@@ -221,8 +221,8 @@ def test_ver_todos_desliga_a_paginacao(logged_client):
 
 def test_excluir_paciente_pela_lista_volta_para_a_lista(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Para Excluir", cpf="11111111111")
-    criar_paciente(logged_client, nome="Que Fica", cpf="22222222222")
+    criar_paciente(logged_client, nome="PARA EXCLUIR", cpf="11111111111")
+    criar_paciente(logged_client, nome="QUE FICA", cpf="22222222222")
 
     resp = logged_client.post(
         "/paciente/1/excluir", data={"next": "/pacientes?status=ativo"}
@@ -234,7 +234,7 @@ def test_excluir_paciente_pela_lista_volta_para_a_lista(logged_client):
     nomes = [r["nome"] for r in conn.execute("SELECT nome FROM pacientes").fetchall()]
     na_lixeira = conn.execute("SELECT COUNT(*) AS c FROM lixeira_pacientes").fetchone()["c"]
     conn.close()
-    assert nomes == ["Que Fica"]
+    assert nomes == ["QUE FICA"]
     # Rede de segurança: o excluído está na lixeira, restaurável.
     assert na_lixeira == 1
 
@@ -275,9 +275,9 @@ def test_paginacao_respeita_filtros(logged_client):
 # ---------------------------------------------------------------------------
 def test_status_em_massa_altera_apenas_selecionados(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Um", cpf="11111111111")
-    criar_paciente(logged_client, nome="Dois", cpf="22222222222")
-    criar_paciente(logged_client, nome="Três", cpf="33333333333")
+    criar_paciente(logged_client, nome="UM", cpf="11111111111")
+    criar_paciente(logged_client, nome="DOIS", cpf="22222222222")
+    criar_paciente(logged_client, nome="TRÊS", cpf="33333333333")
 
     resp = logged_client.post(
         "/pacientes/status-em-massa",
@@ -291,15 +291,15 @@ def test_status_em_massa_altera_apenas_selecionados(logged_client):
         for row in conn.execute("SELECT nome, status FROM pacientes").fetchall()
     }
     conn.close()
-    assert status == {"Um": "mudou_se", "Dois": "mudou_se", "Três": "ativo"}
+    assert status == {"UM": "mudou_se", "DOIS": "mudou_se", "TRÊS": "ativo"}
     # Mutação em lote sempre cria backup antes.
     assert any("antes_status_em_massa" in b["nome"] for b in db.listar_backups())
 
 
 def test_status_em_massa_reativa_em_lote(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Um", cpf="11111111111")
-    criar_paciente(logged_client, nome="Dois", cpf="22222222222")
+    criar_paciente(logged_client, nome="UM", cpf="11111111111")
+    criar_paciente(logged_client, nome="DOIS", cpf="22222222222")
     logged_client.post("/pacientes/status-em-massa", data={"status": "obito", "paciente_ids": ["1", "2"]})
     logged_client.post("/pacientes/status-em-massa", data={"status": "ativo", "paciente_ids": ["1", "2"]})
 
@@ -339,8 +339,8 @@ def test_status_em_massa_valida_entrada(logged_client):
 # ---------------------------------------------------------------------------
 def test_cpf_duplicado_rejeitado_no_cadastro(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Titular Do CPF", cpf="12345678901")
-    resp = criar_paciente(logged_client, nome="Impostor", cpf="123.456.789-01")
+    criar_paciente(logged_client, nome="TITULAR DO CPF", cpf="12345678901")
+    resp = criar_paciente(logged_client, nome="IMPOSTOR", cpf="123.456.789-01")
     assert resp.status_code == 200  # re-render com erro, nada gravado
 
     conn = db.get_db_connection()
@@ -351,12 +351,12 @@ def test_cpf_duplicado_rejeitado_no_cadastro(logged_client):
 
 def test_cpf_duplicado_rejeitado_na_edicao(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Primeiro", cpf="12345678901")
-    criar_paciente(logged_client, nome="Segundo", cpf="98765432100")
+    criar_paciente(logged_client, nome="PRIMEIRO", cpf="12345678901")
+    criar_paciente(logged_client, nome="SEGUNDO", cpf="98765432100")
 
     resp = logged_client.post(
         "/paciente/2/editar",
-        data={"nome": "Segundo", "cpf": "12345678901"},
+        data={"nome": "SEGUNDO", "cpf": "12345678901"},
     )
     assert resp.status_code == 200  # re-render com erro
 
@@ -368,23 +368,23 @@ def test_cpf_duplicado_rejeitado_na_edicao(logged_client):
 
 def test_editar_mantendo_o_proprio_cpf_permitido(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Titular", cpf="12345678901")
+    criar_paciente(logged_client, nome="TITULAR", cpf="12345678901")
     resp = logged_client.post(
         "/paciente/1/editar",
-        data={"nome": "Titular Renomeado", "cpf": "123.456.789-01"},
+        data={"nome": "TITULAR RENOMEADO", "cpf": "123.456.789-01"},
     )
     assert resp.status_code == 302  # o próprio documento não conta como duplicado
 
     conn = db.get_db_connection()
     nome = conn.execute("SELECT nome FROM pacientes WHERE id = 1").fetchone()["nome"]
     conn.close()
-    assert nome == "Titular Renomeado"
+    assert nome == "TITULAR RENOMEADO"
 
 
 def test_pacientes_sem_documento_podem_coexistir(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Bebê Um", cpf="")
-    resp = criar_paciente(logged_client, nome="Bebê Dois", cpf="")
+    criar_paciente(logged_client, nome="BEBÊ UM", cpf="")
+    resp = criar_paciente(logged_client, nome="BEBÊ DOIS", cpf="")
     assert resp.status_code == 302  # sem documento não há como colidir
 
     conn = db.get_db_connection()
@@ -399,7 +399,7 @@ def test_pacientes_sem_documento_podem_coexistir(logged_client):
 def test_transferir_paciente_muda_de_casa_e_reativa(logged_client):
     criar_casa(logged_client)
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
-    criar_paciente(logged_client, nome="Eva Transferida")
+    criar_paciente(logged_client, nome="EVA TRANSFERIDA")
     logged_client.post("/paciente/1/status", data={"status": "mudou_se"})
 
     resp = logged_client.post("/paciente/1/transferir", data={"casa_destino_id": "2"})
@@ -419,9 +419,9 @@ def test_transferir_para_casa_inexistente_rejeitado(logged_client):
 def test_transferir_familia_move_apenas_ativos(logged_client):
     criar_casa(logged_client)
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
-    criar_paciente(logged_client, nome="Pai Ativo", cpf="11111111111")
-    criar_paciente(logged_client, nome="Filha Ativa", cpf="22222222222")
-    criar_paciente(logged_client, nome="Avó Que Ja Mudou", cpf="33333333333")
+    criar_paciente(logged_client, nome="PAI ATIVO", cpf="11111111111")
+    criar_paciente(logged_client, nome="FILHA ATIVA", cpf="22222222222")
+    criar_paciente(logged_client, nome="AVÓ QUE JA MUDOU", cpf="33333333333")
     logged_client.post("/paciente/3/status", data={"status": "mudou_se"})
 
     resp = logged_client.post("/casa/1/transferir", data={"casa_destino_id": "2"})
@@ -433,9 +433,9 @@ def test_transferir_familia_move_apenas_ativos(logged_client):
         for row in conn.execute("SELECT nome, casa_id FROM pacientes").fetchall()
     }
     conn.close()
-    assert casas["Pai Ativo"] == 2
-    assert casas["Filha Ativa"] == 2
-    assert casas["Avó Que Ja Mudou"] == 1  # registro guardado fica na casa antiga
+    assert casas["PAI ATIVO"] == 2
+    assert casas["FILHA ATIVA"] == 2
+    assert casas["AVÓ QUE JA MUDOU"] == 1  # registro guardado fica na casa antiga
 
 
 def test_transferir_familia_para_mesma_casa_rejeitado(logged_client):
@@ -451,9 +451,9 @@ def test_transferir_familia_para_mesma_casa_rejeitado(logged_client):
 def _familia(logged_client):
     """Três moradores na casa 1; a avó já consta como óbito."""
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Pai Da Casa", cpf="11111111111")
-    criar_paciente(logged_client, nome="Filha Da Casa", cpf="22222222222")
-    criar_paciente(logged_client, nome="Avó Falecida", cpf="33333333333")
+    criar_paciente(logged_client, nome="PAI DA CASA", cpf="11111111111")
+    criar_paciente(logged_client, nome="FILHA DA CASA", cpf="22222222222")
+    criar_paciente(logged_client, nome="AVÓ FALECIDA", cpf="33333333333")
     logged_client.post("/paciente/3/status", data={"status": "obito"})
 
 
@@ -470,8 +470,8 @@ def test_familia_inteira_marcada_como_mudou_se(logged_client):
     assert resp.status_code == 302
 
     situacoes = _situacoes()
-    assert situacoes["Pai Da Casa"] == "mudou_se"
-    assert situacoes["Filha Da Casa"] == "mudou_se"
+    assert situacoes["PAI DA CASA"] == "mudou_se"
+    assert situacoes["FILHA DA CASA"] == "mudou_se"
 
 
 def test_obito_nunca_e_alterado_pela_acao_da_familia(logged_client):
@@ -479,10 +479,10 @@ def test_obito_nunca_e_alterado_pela_acao_da_familia(logged_client):
     óbito — nem para fora de área, nem de volta para ativo."""
     _familia(logged_client)
     logged_client.post("/casa/1/status-familia", data={"status": "fora_de_area"})
-    assert _situacoes()["Avó Falecida"] == "obito"
+    assert _situacoes()["AVÓ FALECIDA"] == "obito"
 
     logged_client.post("/casa/1/status-familia", data={"status": "ativo"})
-    assert _situacoes()["Avó Falecida"] == "obito"
+    assert _situacoes()["AVÓ FALECIDA"] == "obito"
 
 
 def test_familia_sai_das_contagens_e_fica_guardada_na_casa(logged_client):
@@ -493,7 +493,7 @@ def test_familia_sai_das_contagens_e_fica_guardada_na_casa(logged_client):
     assert ">0</p>" in painel  # nenhum paciente ativo no território
 
     casa = logged_client.get("/casa/1").get_data(as_text=True)
-    assert "Pai Da Casa" in casa           # cadastro continua na casa
+    assert "PAI DA CASA" in casa           # cadastro continua na casa
     assert "Registros guardados" in casa
 
 
@@ -503,9 +503,9 @@ def test_familia_volta_a_ativa(logged_client):
     logged_client.post("/casa/1/status-familia", data={"status": "ativo"})
 
     situacoes = _situacoes()
-    assert situacoes["Pai Da Casa"] == "ativo"
-    assert situacoes["Filha Da Casa"] == "ativo"
-    assert situacoes["Avó Falecida"] == "obito"
+    assert situacoes["PAI DA CASA"] == "ativo"
+    assert situacoes["FILHA DA CASA"] == "ativo"
+    assert situacoes["AVÓ FALECIDA"] == "obito"
 
 
 def test_status_de_familia_invalido_rejeitado(logged_client):
@@ -514,8 +514,8 @@ def test_status_de_familia_invalido_rejeitado(logged_client):
     for invalido in ("obito", "sumiu", ""):
         logged_client.post("/casa/1/status-familia", data={"status": invalido})
     situacoes = _situacoes()
-    assert situacoes["Pai Da Casa"] == "ativo"
-    assert situacoes["Filha Da Casa"] == "ativo"
+    assert situacoes["PAI DA CASA"] == "ativo"
+    assert situacoes["FILHA DA CASA"] == "ativo"
 
 
 def test_status_de_familia_em_casa_inexistente(logged_client):
@@ -527,10 +527,10 @@ def test_status_de_familia_em_casa_inexistente(logged_client):
 def test_status_de_familia_nao_atinge_outras_casas(logged_client):
     _familia(logged_client)
     criar_casa(logged_client, endereco="Rua B, 2", numero="2")
-    criar_paciente(logged_client, casa_id=2, nome="Vizinho Intacto", cpf="44444444444")
+    criar_paciente(logged_client, casa_id=2, nome="VIZINHO INTACTO", cpf="44444444444")
 
     logged_client.post("/casa/1/status-familia", data={"status": "mudou_se"})
-    assert _situacoes()["Vizinho Intacto"] == "ativo"
+    assert _situacoes()["VIZINHO INTACTO"] == "ativo"
 
 
 def test_acao_da_familia_gera_backup_antes(logged_client):
@@ -554,7 +554,7 @@ def test_menu_reune_todas_as_acoes_da_casa(logged_client):
     """Um botão só: o que era três botões no cabeçalho e duas seções no fim da
     página virou uma lista."""
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Moradora")
+    criar_paciente(logged_client, nome="MORADORA")
     corpo = logged_client.get("/casa/1").get_data(as_text=True)
 
     assert 'x-data="houseMenu"' in corpo
@@ -582,9 +582,9 @@ def test_detalhe_do_paciente_nasce_recolhido_com_resumo(logged_client):
     criar_casa(logged_client)
     logged_client.post(
         "/casa/1/paciente/novo",
-        data={"nome": "Maria Com Tudo", "cpf": "11111111111", "telefone": "",
+        data={"nome": "MARIA COM TUDO", "cpf": "11111111111", "telefone": "",
               "data_nascimento": "1961-01-27", "sexo": "Feminino",
-              "nome_pai": "Vicente Antonio", "nome_mae": "Altiva Maria",
+              "nome_pai": "VICENTE ANTONIO", "nome_mae": "ALTIVA MARIA",
               "observacao": "HIPERTENSA. Uso continuo de METFORMINA",
               "condicoes_saude": ["hipertensao", "diabetes"]},
     )
@@ -604,7 +604,7 @@ def test_detalhe_do_paciente_nasce_recolhido_com_resumo(logged_client):
 
     # E o conteúdo de verdade não vaza para o estado fechado: ele mora no bloco
     # recolhido, depois do resumo.
-    for cru in ("Tem hipertensão arterial", "METFORMINA", "Vicente Antonio"):
+    for cru in ("Tem hipertensão arterial", "METFORMINA", "VICENTE ANTONIO"):
         assert cru not in sinais
         assert cru in corpo[corpo.index('id="detalhes-1"'):]
 
@@ -614,7 +614,7 @@ def test_resumo_recolhido_concorda_o_singular(logged_client):
     criar_casa(logged_client)
     logged_client.post(
         "/casa/1/paciente/novo",
-        data={"nome": "Uma Condicao", "cpf": "11111111111", "telefone": "",
+        data={"nome": "UMA CONDICAO", "cpf": "11111111111", "telefone": "",
               "data_nascimento": "1961-01-27", "sexo": "Feminino",
               "nome_pai": "", "nome_mae": "", "observacao": "",
               "condicoes_saude": ["hipertensao"]},
@@ -631,17 +631,17 @@ def test_paciente_sem_detalhe_nao_ganha_linha_de_resumo(logged_client):
     morador fica sozinha, sem afordância morta."""
     criar_casa(logged_client)
     criar_paciente(
-        logged_client, nome="Sem Detalhe", nome_pai="", nome_mae="", observacao=""
+        logged_client, nome="SEM DETALHE", nome_pai="", nome_mae="", observacao=""
     )
     corpo = logged_client.get("/casa/1").get_data(as_text=True)
-    assert "Sem Detalhe" in corpo
+    assert "SEM DETALHE" in corpo
     assert "patient-summary-texto" not in corpo
     assert "patient-detalhes" not in corpo
 
 
 def test_interruptor_de_detalhes_da_tabela(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Com Filiacao", nome_pai="Pai Presente")
+    criar_paciente(logged_client, nome="COM FILIACAO", nome_pai="PAI PRESENTE")
     corpo = logged_client.get("/casa/1").get_data(as_text=True)
     assert "data-detalhes-todos" in corpo
     assert "Abrir detalhes" in corpo
@@ -663,12 +663,12 @@ def test_situacao_individual_pelo_painel_da_casa(logged_client):
     """A coluna Situação resolve o caso de um morador só — sem precisar ir até
     a página Pacientes nem aplicar à família inteira."""
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Quem Mudou", cpf="11111111111")
-    criar_paciente(logged_client, nome="Quem Ficou", cpf="22222222222")
+    criar_paciente(logged_client, nome="QUEM MUDOU", cpf="11111111111")
+    criar_paciente(logged_client, nome="QUEM FICOU", cpf="22222222222")
 
     corpo = logged_client.get("/casa/1").get_data(as_text=True)
     assert "Situação" in corpo
-    assert 'aria-label="Situação de Quem Mudou"' in corpo
+    assert 'aria-label="Situação de QUEM MUDOU"' in corpo
 
     resp = logged_client.post(
         "/paciente/1/status", data={"status": "mudou_se", "next": "/casa/1"}
@@ -677,8 +677,8 @@ def test_situacao_individual_pelo_painel_da_casa(logged_client):
     assert resp.headers["Location"].endswith("/casa/1")
 
     situacoes = _situacoes()
-    assert situacoes["Quem Mudou"] == "mudou_se"
-    assert situacoes["Quem Ficou"] == "ativo"  # o vizinho de tabela não se mexe
+    assert situacoes["QUEM MUDOU"] == "mudou_se"
+    assert situacoes["QUEM FICOU"] == "ativo"  # o vizinho de tabela não se mexe
 
     casa = logged_client.get("/casa/1").get_data(as_text=True)
     assert "Registros guardados" in casa  # a linha migrou para a seção de baixo
@@ -800,7 +800,7 @@ def test_migracao_limpa_observacoes_de_importacao_antigas(logged_client):
     conn.commit()
     conn.close()
 
-    db.init_db()  # reaplica migrações
+    db.init_db()  # reaplica migrações (inclusive a padronização dos nomes)
 
     conn = db.get_db_connection()
     observacoes = {
@@ -808,10 +808,10 @@ def test_migracao_limpa_observacoes_de_importacao_antigas(logged_client):
         for row in conn.execute("SELECT nome, observacao FROM pacientes").fetchall()
     }
     conn.close()
-    assert observacoes["Antigo Simples"] == ""
-    assert observacoes["Antigo Com Endereco"] == ""
-    assert observacoes["Observacao Do Operador"] == "Acamado, visitar às terças"
-    assert observacoes["Editado Pelo Operador"] == "Importado do e-SUS mas confirmei na visita"
+    assert observacoes["ANTIGO SIMPLES"] == ""
+    assert observacoes["ANTIGO COM ENDERECO"] == ""
+    assert observacoes["OBSERVACAO DO OPERADOR"] == "Acamado, visitar às terças"
+    assert observacoes["EDITADO PELO OPERADOR"] == "Importado do e-SUS mas confirmei na visita"
 
 
 def test_restaurar_backup_de_versao_antiga_reaplica_migracoes(logged_client):
@@ -844,7 +844,7 @@ def test_restaurar_backup_de_versao_antiga_reaplica_migracoes(logged_client):
     assert resp.status_code == 302
     # Painel e página de pacientes funcionam sobre o banco restaurado.
     assert logged_client.get("/").status_code == 200
-    assert "Paciente Legado" in logged_client.get("/pacientes").get_data(as_text=True)
+    assert "PACIENTE LEGADO" in logged_client.get("/pacientes").get_data(as_text=True)
 
 
 # ---------------------------------------------------------------------------

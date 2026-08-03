@@ -88,7 +88,7 @@ def test_navegacao_por_link_e_parcial(pagina, servidor):
 def test_submit_get_e_parcial_e_atualiza_conteudo(pagina, servidor):
     """Uma busca (form GET) também navega parcial e reflete o resultado no
     #app-main, sem recarregar a página."""
-    _semear_casa_com_paciente(nome="Joaquina Da Busca")
+    _semear_casa_com_paciente(nome="JOAQUINA DA BUSCA")
     _entrar(pagina, servidor)
     pagina.goto(f"{servidor}/pacientes")
     pagina.wait_for_selector("#app-main")
@@ -99,7 +99,7 @@ def test_submit_get_e_parcial_e_atualiza_conteudo(pagina, servidor):
     pagina.wait_for_url("**/pacientes?*busca=Joaquina*")
 
     assert _janela_sobreviveu(pagina)
-    assert "Joaquina Da Busca" in pagina.locator("#app-main").inner_text()
+    assert "JOAQUINA DA BUSCA" in pagina.locator("#app-main").inner_text()
 
 
 def test_logout_no_smooth_recarrega_a_pagina(pagina, servidor):

@@ -58,6 +58,7 @@ from db import (
     importar_banco,
     init_db,
     listar_backups,
+    normalizar_nome_pessoa,
     primeiro_mes_perfil,
     restaurar_backup,
     salvar_perfil_mensal,
@@ -1631,8 +1632,8 @@ def inserir_paciente_do_form(casa_id, nome, familia_id=None):
             formatar_telefone(request.form.get("telefone", "")),
             request.form.get("data_nascimento", "").strip(),
             request.form.get("sexo", "").strip(),
-            request.form.get("nome_pai", "").strip(),
-            request.form.get("nome_mae", "").strip(),
+            normalizar_nome_pessoa(request.form.get("nome_pai")),
+            normalizar_nome_pessoa(request.form.get("nome_mae")),
             normalizar_condicoes(request.form.getlist("condicoes_saude")),
             request.form.get("observacao", "").strip(),
         ),
@@ -2310,7 +2311,7 @@ def cadastrar_paciente(casa_id):
         )
 
     if request.method == "POST":
-        nome = request.form.get("nome", "").strip()
+        nome = normalizar_nome_pessoa(request.form.get("nome"))
         if not nome:
             flash("Informe o nome do paciente.", "danger")
             return reexibir()
@@ -2341,7 +2342,7 @@ def cadastrar_paciente_geral():
     casas_opcoes = get_casas_para_transferencia()
 
     if request.method == "POST":
-        nome = request.form.get("nome", "").strip()
+        nome = normalizar_nome_pessoa(request.form.get("nome"))
         casa_id_raw = request.form.get("casa_id", "").strip()
 
         def render_erro():
@@ -2424,7 +2425,7 @@ def editar_paciente(paciente_id):
         )
 
     if request.method == "POST":
-        nome = request.form.get("nome", "").strip()
+        nome = normalizar_nome_pessoa(request.form.get("nome"))
         if not nome:
             flash("Informe o nome do paciente.", "danger")
             return reexibir()
@@ -2457,8 +2458,8 @@ def editar_paciente(paciente_id):
                 formatar_cpf_ou_cns(request.form.get("cpf", "")),
                 formatar_telefone(request.form.get("telefone", "")),
                 request.form.get("data_nascimento", "").strip(),
-                request.form.get("nome_pai", "").strip(),
-                request.form.get("nome_mae", "").strip(),
+                normalizar_nome_pessoa(request.form.get("nome_pai")),
+                normalizar_nome_pessoa(request.form.get("nome_mae")),
                 request.form.get("sexo", "").strip(),
                 normalizar_condicoes(request.form.getlist("condicoes_saude")),
                 request.form.get("observacao", "").strip(),
@@ -3418,7 +3419,7 @@ def _inserir_pacientes_importados(registros):
                 VALUES (NULL, ?, ?, ?, ?, ?, '', '', '', '')
                 """,
                 (
-                    registro["nome"],
+                    normalizar_nome_pessoa(registro["nome"]),
                     registro["cpf"],
                     registro["telefone"],
                     registro["data_nascimento"],

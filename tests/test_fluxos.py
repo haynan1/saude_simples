@@ -268,7 +268,7 @@ def _territorio_com_ocupacao(logged_client):
         data={"endereco": "Loja Sem Morador", "numero_casa": "3", "quadra_id": "",
               "tipo_imovel": "loja"},
     )
-    criar_paciente(logged_client, casa_id=1, nome="Moradora Presente")
+    criar_paciente(logged_client, casa_id=1, nome="MORADORA PRESENTE")
 
 
 def test_filtro_com_moradores(logged_client):
@@ -351,7 +351,7 @@ def test_filtro_de_ocupacao_convive_com_a_busca(logged_client):
     """O modal é submetido com a busca ativa: o recorte não pode apagá-la."""
     _territorio_com_ocupacao(logged_client)
     body = logged_client.get("/?busca=Moradora&ocupacao=com_moradores").get_data(as_text=True)
-    assert "Moradora Presente" in body       # resultado da busca segue na tela
+    assert "MORADORA PRESENTE" in body       # resultado da busca segue na tela
     assert "Casa Com Morador" in body        # e a lista respeita o recorte
     assert "Casa Vazia" not in body
 
@@ -442,21 +442,21 @@ def test_numeracao_automatica_por_quadra(logged_client):
 # ---------------------------------------------------------------------------
 def test_crud_paciente(logged_client):
     criar_casa(logged_client)
-    assert criar_paciente(logged_client, nome="Maria de Souza").status_code == 302
+    assert criar_paciente(logged_client, nome="MARIA DE SOUZA").status_code == 302
     body = logged_client.get("/casa/1").get_data(as_text=True)
-    assert "Maria de Souza" in body
+    assert "MARIA DE SOUZA" in body
 
     resp = logged_client.post(
         "/paciente/1/editar",
-        data={"nome": "Maria Editada", "cpf": "", "telefone": "", "data_nascimento": "",
+        data={"nome": "MARIA EDITADA", "cpf": "", "telefone": "", "data_nascimento": "",
               "sexo": "", "nome_pai": "", "nome_mae": "", "observacao": ""},
     )
     assert resp.status_code == 302
-    assert "Maria Editada" in logged_client.get("/casa/1").get_data(as_text=True)
+    assert "MARIA EDITADA" in logged_client.get("/casa/1").get_data(as_text=True)
 
     logged_client.post("/paciente/1/excluir")
     logged_client.get("/casa/1")  # consome o flash da exclusão (contém o nome)
-    assert "Maria Editada" not in logged_client.get("/casa/1").get_data(as_text=True)
+    assert "MARIA EDITADA" not in logged_client.get("/casa/1").get_data(as_text=True)
 
 
 def test_paciente_sem_nome_rejeitado(logged_client):
@@ -478,7 +478,7 @@ def test_condicoes_de_saude_persistem(logged_client):
     criar_casa(logged_client)
     logged_client.post(
         "/casa/1/paciente/novo",
-        data={"nome": "Com Condicoes", "cpf": "", "telefone": "", "data_nascimento": "",
+        data={"nome": "COM CONDICOES", "cpf": "", "telefone": "", "data_nascimento": "",
               "sexo": "", "nome_pai": "", "nome_mae": "", "observacao": "",
               "condicoes_saude": ["gestante", "diabetes"]},
     )
@@ -502,9 +502,9 @@ def test_copiar_dados_do_paciente_sai_em_linhas(logged_client):
     """Um dado por linha: o texto é colado em prontuário e no WhatsApp, e em
     tira contínua não se lê nada."""
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Maria Copiada")
+    criar_paciente(logged_client, nome="MARIA COPIADA")
     assert _texto_para_copiar(logged_client).splitlines() == [
-        "Nome: Maria Copiada",
+        "Nome: MARIA COPIADA",
         "CPF/CNS: 123.456.789-01",
         "Nascimento: 10/05/1990",
         "Telefone: (63) 99999-8888",
@@ -516,9 +516,9 @@ def test_copia_nao_leva_campo_em_branco(logged_client):
     telefone é ruído."""
     criar_casa(logged_client)
     criar_paciente(
-        logged_client, nome="Sem Contato", cpf="", telefone="", data_nascimento=""
+        logged_client, nome="SEM CONTATO", cpf="", telefone="", data_nascimento=""
     )
-    assert _texto_para_copiar(logged_client).splitlines() == ["Nome: Sem Contato"]
+    assert _texto_para_copiar(logged_client).splitlines() == ["Nome: SEM CONTATO"]
 
 
 def test_excluir_casa_cascateia_pacientes(logged_client):
@@ -536,16 +536,16 @@ def test_excluir_casa_cascateia_pacientes(logged_client):
 # ---------------------------------------------------------------------------
 def test_busca_por_nome_aproximado(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="José Aparecido da Silva")
+    criar_paciente(logged_client, nome="JOSÉ APARECIDO DA SILVA")
     body = logged_client.get("/?busca=jose aparecido").get_data(as_text=True)
-    assert "José Aparecido da Silva" in body
+    assert "JOSÉ APARECIDO DA SILVA" in body
 
 
 def test_busca_por_cpf(logged_client):
     criar_casa(logged_client)
     criar_paciente(logged_client, cpf="98765432100")
     body = logged_client.get("/?busca=98765432100").get_data(as_text=True)
-    assert "Paciente Teste" in body
+    assert "PACIENTE TESTE" in body
 
 
 def test_busca_sem_resultado(logged_client):
@@ -557,7 +557,7 @@ def test_painel_estatisticas(logged_client):
     criar_casa(logged_client)
     logged_client.post(
         "/casa/1/paciente/novo",
-        data={"nome": "Gestante Teste", "cpf": "", "telefone": "", "data_nascimento": "1995-01-01",
+        data={"nome": "GESTANTE TESTE", "cpf": "", "telefone": "", "data_nascimento": "1995-01-01",
               "sexo": "Feminino", "nome_pai": "", "nome_mae": "", "observacao": "",
               "condicoes_saude": ["gestante"]},
     )
@@ -601,7 +601,7 @@ def test_exportar_pdf_filtrado(logged_client):
     criar_casa(logged_client)
     logged_client.post(
         "/casa/1/paciente/novo",
-        data={"nome": "Diabetico", "cpf": "", "telefone": "", "data_nascimento": "",
+        data={"nome": "DIABETICO", "cpf": "", "telefone": "", "data_nascimento": "",
               "sexo": "", "nome_pai": "", "nome_mae": "", "observacao": "",
               "condicoes_saude": ["diabetes"]},
     )
@@ -641,7 +641,7 @@ def test_exclusao_de_paciente_e_reversivel_pela_lixeira(logged_client):
     """Contrato de dados sagrados: excluir paciente não destrói nada — o
     registro vai para a lixeira e volta inteiro com um Restaurar."""
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Protegida Pela Lixeira")
+    criar_paciente(logged_client, nome="PROTEGIDA PELA LIXEIRA")
     logged_client.post("/paciente/1/excluir")
 
     conn = db.get_db_connection()
@@ -651,7 +651,7 @@ def test_exclusao_de_paciente_e_reversivel_pela_lixeira(logged_client):
 
     logged_client.post("/lixeira/1/restaurar")
     body = logged_client.get("/casa/1").get_data(as_text=True)
-    assert "Protegida Pela Lixeira" in body
+    assert "PROTEGIDA PELA LIXEIRA" in body
 
 
 # ---------------------------------------------------------------------------

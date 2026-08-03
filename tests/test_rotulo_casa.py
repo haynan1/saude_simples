@@ -52,7 +52,7 @@ def _territorio_com_duas_casas_7(client):
 
 def test_destino_da_transferencia_distingue_casas_de_mesmo_numero(logged_client):
     _territorio_com_duas_casas_7(logged_client)
-    criar_paciente(logged_client, casa_id=1, nome="Quem Vai Mudar")
+    criar_paciente(logged_client, casa_id=1, nome="QUEM VAI MUDAR")
 
     corpo = logged_client.get("/pacientes").get_data(as_text=True)
     assert "Casa 7 · Quadra 13" in corpo
@@ -70,7 +70,7 @@ def test_seletor_de_casa_no_cadastro_distingue(logged_client):
 
 def test_busca_do_painel_diz_a_quadra(logged_client):
     _territorio_com_duas_casas_7(logged_client)
-    criar_paciente(logged_client, casa_id=2, nome="Ana Encontrada")
+    criar_paciente(logged_client, casa_id=2, nome="ANA ENCONTRADA")
     corpo = logged_client.get("/?busca=Ana").get_data(as_text=True)
     assert "Casa 7 · Quadra 14" in corpo
 
@@ -86,7 +86,7 @@ def test_confirmacao_de_exclusao_nomeia_a_casa_inteira(logged_client):
 
 def test_cabecalho_do_cadastro_e_da_edicao_dizem_a_quadra(logged_client):
     _territorio_com_duas_casas_7(logged_client)
-    criar_paciente(logged_client, casa_id=2, nome="Em Edicao")
+    criar_paciente(logged_client, casa_id=2, nome="EM EDICAO")
 
     corpo = logged_client.get("/casa/2/paciente/novo").get_data(as_text=True)
     assert "Casa 7 · Quadra 14" in corpo
@@ -99,18 +99,18 @@ def test_confirmacao_da_transferencia_diz_para_onde_foi(logged_client):
     """A mensagem é onde o operador confere o destino depois do fato. "casa 7"
     não confere nada quando há uma Casa 7 em cada quadra."""
     _territorio_com_duas_casas_7(logged_client)
-    criar_paciente(logged_client, casa_id=1, nome="Quem Mudou")
+    criar_paciente(logged_client, casa_id=1, nome="QUEM MUDOU")
 
     resp = logged_client.post(
         "/paciente/1/transferir", data={"casa_destino_id": "2"}, follow_redirects=True
     )
-    assert "Quem Mudou transferido para a Casa 7 · Quadra 14." in resp.get_data(as_text=True)
+    assert "QUEM MUDOU transferido para a Casa 7 · Quadra 14." in resp.get_data(as_text=True)
 
 
 def test_confirmacao_da_transferencia_de_familia_diz_para_onde_foi(logged_client):
     _territorio_com_duas_casas_7(logged_client)
-    criar_paciente(logged_client, casa_id=1, nome="Um Da Familia", cpf="11111111111")
-    criar_paciente(logged_client, casa_id=1, nome="Outro Da Familia", cpf="22222222222")
+    criar_paciente(logged_client, casa_id=1, nome="UM DA FAMILIA", cpf="11111111111")
+    criar_paciente(logged_client, casa_id=1, nome="OUTRO DA FAMILIA", cpf="22222222222")
 
     resp = logged_client.post(
         "/casa/1/transferir", data={"casa_destino_id": "2"}, follow_redirects=True

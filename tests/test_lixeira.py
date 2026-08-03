@@ -15,7 +15,7 @@ def _total(tabela):
 
 def test_excluir_move_para_a_lixeira(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Vai Pra Lixeira", cpf="11111111111")
+    criar_paciente(logged_client, nome="VAI PRA LIXEIRA", cpf="11111111111")
 
     resp = logged_client.post("/paciente/1/excluir")
     assert resp.status_code == 302
@@ -23,13 +23,13 @@ def test_excluir_move_para_a_lixeira(logged_client):
     assert _total("lixeira_pacientes") == 1
 
     body = logged_client.get("/lixeira").get_data(as_text=True)
-    assert "Vai Pra Lixeira" in body
+    assert "VAI PRA LIXEIRA" in body
     assert "Restaurar" in body
 
 
 def test_restaurar_preserva_id_casa_e_situacao(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Volta Inteiro", cpf="11111111111")
+    criar_paciente(logged_client, nome="VOLTA INTEIRO", cpf="11111111111")
     logged_client.post("/paciente/1/status", data={"status": "mudou_se"})
     logged_client.post("/paciente/1/excluir")
 
@@ -48,22 +48,22 @@ def test_restaurar_preserva_id_casa_e_situacao(logged_client):
 
 def test_restaurar_com_casa_excluida_volta_sem_casa(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Casa Sumiu", cpf="11111111111")
+    criar_paciente(logged_client, nome="CASA SUMIU", cpf="11111111111")
     logged_client.post("/paciente/1/excluir")
     logged_client.post("/casa/1/excluir")  # casa some enquanto espera na lixeira
 
     logged_client.post("/lixeira/1/restaurar")
     conn = db.get_db_connection()
-    row = conn.execute("SELECT casa_id FROM pacientes WHERE nome = 'Casa Sumiu'").fetchone()
+    row = conn.execute("SELECT casa_id FROM pacientes WHERE nome = 'CASA SUMIU'").fetchone()
     conn.close()
     assert row["casa_id"] is None
 
 
 def test_restaurar_bloqueado_se_cpf_foi_recadastrado(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Original", cpf="11111111111")
+    criar_paciente(logged_client, nome="ORIGINAL", cpf="11111111111")
     logged_client.post("/paciente/1/excluir")
-    criar_paciente(logged_client, nome="Novo Dono Do CPF", cpf="11111111111")
+    criar_paciente(logged_client, nome="NOVO DONO DO CPF", cpf="11111111111")
 
     logged_client.post("/lixeira/1/restaurar")
     # Permanece na lixeira; a regra de documento único não é violada.
@@ -73,8 +73,8 @@ def test_restaurar_bloqueado_se_cpf_foi_recadastrado(logged_client):
 
 def test_esvaziar_lixeira_com_backup(logged_client):
     criar_casa(logged_client)
-    criar_paciente(logged_client, nome="Um", cpf="11111111111")
-    criar_paciente(logged_client, nome="Dois", cpf="22222222222")
+    criar_paciente(logged_client, nome="UM", cpf="11111111111")
+    criar_paciente(logged_client, nome="DOIS", cpf="22222222222")
     logged_client.post("/paciente/1/excluir")
     logged_client.post("/paciente/2/excluir")
 

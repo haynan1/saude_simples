@@ -183,7 +183,7 @@ def test_resultado_de_casa_leva_ao_painel_da_casa(logged_client):
 def test_resultado_de_casa_mostra_quadra_e_moradores(logged_client):
     """O rótulo do resultado é o mesmo do resto do app: casa + quadra."""
     _territorio(logged_client)
-    criar_paciente(logged_client, casa_id=1, nome="Moradora Presente")
+    criar_paciente(logged_client, casa_id=1, nome="MORADORA PRESENTE")
     casas = bloco_casas(logged_client.get("/?busca=casa+42+q3").get_data(as_text=True))
     assert "Casa 42 · Quadra 3" in casas
     assert "1 pac." in casas
@@ -206,7 +206,7 @@ def test_busca_nao_recorta_o_quadro_de_casas(logged_client):
     """Procurar um paciente não pode esvaziar a lista de casas: quem buscou uma
     pessoa não pediu para perder o quadro do território."""
     _territorio(logged_client)
-    criar_paciente(logged_client, casa_id=1, nome="Joaquina Ferreira")
+    criar_paciente(logged_client, casa_id=1, nome="JOAQUINA FERREIRA")
     body = logged_client.get("/?busca=Joaquina").get_data(as_text=True)
     assert "4 cadastrada(s)" in body
     assert "Avenida Central, 900" in body
